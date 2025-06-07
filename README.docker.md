@@ -30,7 +30,7 @@ This document provides instructions for building, running, and deploying the Ser
 The following environment variables can be configured in the `docker-compose.yml` file or passed directly to the container:
 
 - `REACT_APP_API_URL`: URL for the main server API (default: http://192.168.8.209:8002)
-- `REACT_APP_WOL_SERVICE_URL`: URL for the Wake-on-LAN service (default: http://192.168.8.121:8002)
+- `REACT_APP_WOL_SERVICE_URL`: URL for the Wake-on-LAN service (default: http://192.168.8.170:8002)
 
 ## Production Deployment
 
@@ -59,15 +59,15 @@ To pull and run the latest image:
 
 ```bash
 # Pull the image
-docker pull ghcr.io/<username>/server-admin-dashboard:latest
+docker pull ghcr.io/lamarquenet/server-admin-dashboard:latest
 
 # Run the container
-docker run -d -p 80:80 \
+docker run -d -p 3000:80 \
   -e REACT_APP_API_URL=http://your-api-server:8002 \
   -e REACT_APP_WOL_SERVICE_URL=http://your-wol-server:8002 \
   --name server-admin-dashboard \
   --restart unless-stopped \
-  ghcr.io/<username>/server-admin-dashboard:latest
+  ghcr.io/lamarquenet/server-admin-dashboard:latest
 ```
 
 ## Running as a Service
