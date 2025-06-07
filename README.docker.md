@@ -23,7 +23,7 @@ This document provides instructions for building, running, and deploying the Ser
    docker-compose up --build
    ```
 
-3. Access the dashboard at http://localhost:3000
+3. Access the dashboard at http://localhost:80
 
 ### Environment Variables
 
@@ -62,7 +62,7 @@ To pull and run the latest image:
 docker pull ghcr.io/lamarquenet/server-admin-dashboard:latest
 
 # Run the container
-docker run -d -p 3000:80 \
+docker run -d -p 80:3000 \
   -e REACT_APP_API_URL=http://your-api-server:8002 \
   -e REACT_APP_WOL_SERVICE_URL=http://your-wol-server:8002 \
   --name server-admin-dashboard \
