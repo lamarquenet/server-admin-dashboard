@@ -30,7 +30,7 @@ COPY --from=build /app/build /usr/share/nginx/html
 # RUN chmod +x /docker-entrypoint.sh
 
 # Expose port
-EXPOSE 80
+EXPOSE 3000
 
 # Use custom entrypoint script to substitute environment variables at runtime
 # ENTRYPOINT ["/docker-entrypoint.sh"]

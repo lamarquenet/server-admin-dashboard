@@ -83,7 +83,7 @@ services:
   dashboard:
     image: ghcr.io/<username>/server-admin-dashboard:latest
     ports:
-      - "80:80"
+      - "3000:3000"
     environment:
       - REACT_APP_API_URL=http://your-api-server:8002
       - REACT_APP_WOL_SERVICE_URL=http://your-wol-server:8002
