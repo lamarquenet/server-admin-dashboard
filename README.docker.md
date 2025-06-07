@@ -62,7 +62,7 @@ To pull and run the latest image:
 docker pull ghcr.io/lamarquenet/server-admin-dashboard:latest
 
 # Run the container
-docker run -d -p 80:3000 \
+docker run -d -p 80:80 \
   -e REACT_APP_API_URL=http://your-api-server:8002 \
   -e REACT_APP_WOL_SERVICE_URL=http://your-wol-server:8002 \
   --name server-admin-dashboard \
