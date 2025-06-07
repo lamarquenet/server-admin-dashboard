@@ -26,12 +26,12 @@ COPY --from=build /app/build /usr/share/nginx/html
 # COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Add runtime environment variable support
-COPY docker-entrypoint.sh /
-RUN chmod +x /docker-entrypoint.sh
+# COPY docker-entrypoint.sh /
+# RUN chmod +x /docker-entrypoint.sh
 
 # Expose port
 EXPOSE 80
 
 # Use custom entrypoint script to substitute environment variables at runtime
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
