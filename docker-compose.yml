@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://192.168.8.209:8002
+      - REACT_APP_WOL_SERVICE_URL=http://192.168.8.170:8002
+    restart: unless-stopped
+    # Uncomment the following lines if you need to mount volumes for development
+    # volumes:
+    #   - ./src:/app/src
+    #   - ./public:/app/public
