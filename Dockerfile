@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM node:23-alpine as build
+FROM node:23-alpine AS build
 
 # Set working directory
 WORKDIR /app
@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM --platform=$TARGETPLATFORM nginx:alpine
+FROM nginx:alpine
 
 # Copy built files from build stage to nginx serve directory
 COPY --from=build /app/build /usr/share/nginx/html
