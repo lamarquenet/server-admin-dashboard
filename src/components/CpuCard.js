@@ -1,5 +1,5 @@
-import React from 'react';
-import { FaMicrochip, FaThermometerHalf, FaTachometerAlt } from 'react-icons/fa';
+import React, { useState } from 'react';
+import { FaMicrochip, FaThermometerHalf, FaTachometerAlt, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
@@ -16,6 +16,8 @@ ChartJS.register(
 );
 
 const CpuCard = ({ cpu }) => {
+  const [showCores, setShowCores] = useState(false);
+  
   // Generate labels for the chart (last 10 seconds)
   const labels = Array.from({ length: 10 }, (_, i) => `${i}s ago`).reverse();
   
@@ -143,21 +145,30 @@ const CpuCard = ({ cpu }) => {
         
         {cpu.cores && cpu.cores.length > 0 && (
           <div className="mt-4">
-            <h3 className="text-sm font-semibold text-gray-400 mb-2">Core Usage</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {cpu.cores.map((core, index) => (
-                <div key={index} className="bg-dark-600 rounded p-2">
-                  <div className="text-xs text-gray-400 mb-1">Core {index}</div>
-                  <div className="w-full bg-dark-500 rounded-full h-2.5">
-                    <div 
-                      className={`h-2.5 rounded-full ${getUsageColor(core.load)}`}
-                      style={{ width: `${core.load}%` }}
-                    ></div>
+            <button 
+              onClick={() => setShowCores(!showCores)}
+              className="w-full flex items-center justify-between text-sm font-semibold text-gray-400 mb-2 hover:text-gray-300 transition-colors"
+            >
+              <span>Core Usage</span>
+              {showCores ? <FaChevronUp /> : <FaChevronDown />}
+            </button>
+            
+            {showCores && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {cpu.cores.map((core, index) => (
+                  <div key={index} className="bg-dark-600 rounded p-2">
+                    <div className="text-xs text-gray-400 mb-1">Core {index}</div>
+                    <div className="w-full bg-dark-500 rounded-full h-2.5">
+                      <div 
+                        className={`h-2.5 rounded-full ${getUsageColor(core.load)}`}
+                        style={{ width: `${core.load}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-xs mt-1 text-right">{core.load}%</div>
                   </div>
-                  <div className="text-xs mt-1 text-right">{core.load}%</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

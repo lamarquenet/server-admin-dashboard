@@ -74,26 +74,47 @@ docker run -d -p 80:80 \
 
 ### Using Docker Compose
 
-Create a `docker-compose.prod.yml` file:
-
+Create a `docker-compose.yml` file:
 ```yaml
-version: '3.8'
+version: "0.8"
 
 services:
-  dashboard:
-    image: ghcr.io/<username>/server-admin-dashboard:latest
-    ports:
-      - "80:80"
-    environment:
-      - REACT_APP_API_URL=http://your-api-server:8002
-      - REACT_APP_WOL_SERVICE_URL=http://your-wol-server:8002
+  wol-service:
+    image: ghcr.io/lamarquenet/wol-service:latest
+    container_name: wol-service
+    platform: linux/arm64
     restart: unless-stopped
-```
+    network_mode: "host"
+    environment:
+      - WOL_SERVICE_PORT=${WOL_SERVICE_PORT:-8002}
+      - SERVER_MAC=${SERVER_MAC:-10:7B:44:93:F0:CD}
+      - WOL_BROADCAST_ADDR=${WOL_BROADCAST_ADDR:-192.168.8.255}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
+  dashboard:
+    image: ghcr.io/lamarquenet/server-admin-dashboard:latest
+    container_name: server-admin-dashboard
+    platform: linux/arm64
+    ports:
+      - 80:80
+    environment:
+      - REACT_APP_API_URL=http://192.168.8.209:8002
+      - REACT_APP_WOL_SERVICE_URL=http://192.168.8.170:8002
+    restart: unless-stopped
+    networks:
+      - stats-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  stats-network:
+    driver: bridge
+```
 Then run:
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+docker compose up -d
 ```
 
 ### Using Systemd

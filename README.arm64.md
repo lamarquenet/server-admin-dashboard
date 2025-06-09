@@ -1,6 +1,6 @@
 # ARM64 Docker Support for Server Admin Dashboard
 
-This document provides instructions for running the Server Admin Dashboard and Wake-on-LAN service on ARM64 architecture devices like Raspberry Pi.
+This document provides instructions for running the Server Admin Dashboard and Wake-on-LAN service on ARM64 architecture devices like Raspberry Pi if you want to have a low powered device always online that you can access to turn on or off the server even when the server is off and from where you can access the statistics of the server in real time.
 
 ## Changes Made
 
@@ -68,3 +68,45 @@ If you want to build multi-architecture images locally:
 - If you encounter issues with the WOL service, check if the image you're using supports ARM64 architecture.
 - You may need to modify the Dockerfile for your WOL service to add platform support.
 - Check Docker logs for detailed error messages: `docker logs wol-service`
+
+
+Alternative flow create the following docker-compose.yml on a folder in your raspberry to pull the images:
+version: "0.8"
+
+services:
+  wol-service:
+    image: ghcr.io/lamarquenet/wol-service:latest
+    container_name: wol-service
+    platform: linux/arm64
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      - WOL_SERVICE_PORT=${WOL_SERVICE_PORT:-8002}
+      - SERVER_MAC=${SERVER_MAC:-10:7B:44:93:F0:CD}
+      - WOL_BROADCAST_ADDR=${WOL_BROADCAST_ADDR:-192.168.8.255}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  dashboard:
+    image: ghcr.io/lamarquenet/server-admin-dashboard:latest
+    container_name: server-admin-dashboard
+    platform: linux/arm64
+    ports:
+      - 80:80
+    environment:
+      - REACT_APP_API_URL=http://192.168.8.209:8002
+      - REACT_APP_WOL_SERVICE_URL=http://192.168.8.170:8002
+    restart: unless-stopped
+    networks:
+      - stats-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  stats-network:
+    driver: bridge
+
+
+
+-------And then run 
+docker compose up -d
