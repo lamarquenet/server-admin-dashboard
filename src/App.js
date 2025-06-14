@@ -10,6 +10,7 @@ import MemoryCard from './components/MemoryCard';
 import GpuCards from './components/GpuCards';
 import PowerControl from './components/PowerControl';
 import Footer from './components/Footer';
+import VllmControl from './components/VllmControl';
 
 // API URLs
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
@@ -165,6 +166,16 @@ function App() {
     }
   };
 
+  // Handle run Vllm
+  const handleRunVllm = async () => {
+    try {
+      await axios.post(`${API_URL}/api/command/start-vllm`, {}, { timeout: 5000 });
+      console.log('Vllm started successfully');
+    } catch (err) {
+      console.error('Error starting Vllm:', err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-dark-800 text-white flex items-center justify-center">
@@ -230,6 +241,13 @@ function App() {
           {/* GPUs */}
           <div className="lg:col-span-4">
             <GpuCards gpus={systemInfo.gpus} />
+          </div>
+
+          {/* Vllm Control */}
+          <div className="lg:col-span-4">
+            <VllmControl
+              onRunVllm={handleRunVllm}
+            />
           </div>
           
           {/* Power Control */}
