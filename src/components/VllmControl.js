@@ -16,27 +16,27 @@ const VllmControl = () => {
       console.log('VLLM periodic status check:', response.data);
       
       if (response.data.status === 'running') {
-        // If VLLM is running and we were in loading state, clear the timer
-        if (buttonState === 'loading') {
-          setTimer(0);
-        }
+        // If VLLM is running, transition to ready state
         setButtonState('ready');
+        setTimer(0);
+      } else if (buttonState === 'shuttingDown') {
+        // If we're shutting down and VLLM is not running, complete the transition
+        setButtonState('normal');
+        setTimer(0);
+      } else if (buttonState === 'loading') {
+        // If we're loading, keep the loading state until we see 'running'
+        // Do nothing - maintain loading state
       } else {
-        // If VLLM is not running and we were in shuttingDown state, clear the timer
-        if (buttonState === 'shuttingDown') {
-          setTimer(0);
-        }
-        // Only set to normal if we're not in the middle of starting up
-        if (buttonState !== 'loading') {
-          setButtonState('normal');
-        }
+        // In any other case, set to normal
+        setButtonState('normal');
       }
     } catch (err) {
       console.log('VLLM status check error:', err.message);
-      // If we can't reach the status endpoint and we're not in a transitional state, set to normal
+      // Only change state if we're not in a transitional state
       if (buttonState !== 'loading' && buttonState !== 'shuttingDown') {
         setButtonState('normal');
       }
+      // If we're in loading/shuttingDown state, maintain that state
     }
   };
 
