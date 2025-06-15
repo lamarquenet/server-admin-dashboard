@@ -62,21 +62,51 @@ const PowerControl = ({ status, onStatusChange }) => {
     }
   }, [status, wakeupInProgress, shutdownInProgress]);
   
-  // Handle shutdown confirmation
-  const handleShutdownClick = async () => {
+  // Handle shutdown confirmation  const handleShutdownClick = async () => {
     if (confirmShutdown) {
       try {
-        await axios.post(`${API_URL}/api/power/shutdown`, {}, { timeout: 5000 });
-        onStatusChange('offline');
-        // Set shutdown in progress and start the timeout counter
+        // First set the shutdown in progress state and start the counter
         setShutdownInProgress(true);
         setTimeoutCounter(TIMEOUT_DURATION);
+        setConfirmShutdown(false);
+        
+        await axios.post(`${API_URL}/api/power/shutdown`, {}, { timeout: 5000 });
+        
+        // Start polling the server status to detect when it actually goes offline
+        const checkStatus = async () => {
+          try {
+            const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
+            return response.data.status;
+          } catch (err) {
+            // If we can't reach the server, it's probably offline
+            return 'offline';
+          }
+        };
+        
+        // Check every 5 seconds
+        const statusInterval = setInterval(async () => {
+          const serverStatus = await checkStatus();
+          if (serverStatus === 'offline') {
+            onStatusChange('offline');
+            clearInterval(statusInterval);
+          }
+        }, 5000);
+        
+        // Clear the interval after the timeout duration
+        setTimeout(() => {
+          clearInterval(statusInterval);
+          if (!shutdownInProgress) {
+            onStatusChange('offline');
+          }
+        }, TIMEOUT_DURATION * 1000);
+        
       } catch (err) {
         console.error('Error shutting down server:', err);
-        // If shutdown failed, server is probably still online
+        // If shutdown command failed, reset everything
+        setShutdownInProgress(false);
+        setTimeoutCounter(0);
         onStatusChange('online');
       }
-      setConfirmShutdown(false);
     } else {
       setConfirmShutdown(true);
     }
