@@ -45,9 +45,9 @@ const VllmControl = () => {
     try {
       // Set loading state before making the request
       setButtonState('loading');
-      setTimer(125); // 125 seconds for loading (2 minutes 5 seconds)
+      setTimer(150); // 150 seconds for loading (2 minutes 30 seconds)
       
-      await axios.post(`${API_URL}/api/command/start-vllm`, {}, { timeout: 120000 });
+      await axios.post(`${API_URL}/api/command/start-vllm`, {}, { timeout: 400000});
       console.log('Vllm start command sent successfully');
       
       // Start polling to check if VLLM is actually running
@@ -76,7 +76,7 @@ const VllmControl = () => {
       // Clear polling after the timeout duration
       setTimeout(() => {
         clearInterval(pollInterval);
-      }, 125000); // 125 seconds timeout
+      }, 400000); // 400 seconds timeout
       
     } catch (err) {
       console.error('Error starting Vllm:', err);
@@ -102,9 +102,9 @@ const VllmControl = () => {
     try {
       // Set shutting down state before making the request
       setButtonState('shuttingDown');
-      setTimer(120); // 120 seconds timeout for shutdown
+      setTimer(20); // 120 seconds timeout for shutdown
       
-      await axios.post(`${API_URL}/api/command/stop-vllm`, {}, { timeout: 10000 }); // Increased timeout to 10s
+      await axios.post(`${API_URL}/api/command/stop-vllm`, {}, { timeout: 400000 }); // Increased timeout to 10s
       console.log('Vllm stop command sent successfully');
       
       // Start polling to check if VLLM has stopped
