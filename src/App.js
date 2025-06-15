@@ -91,90 +91,7 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Handle server power control
-  const handlePowerControl = async (action) => {
-    try {
-      if (action === 'shutdown') {
-        await axios.post(`${API_URL}/api/power/shutdown`, {}, { timeout: 5000 });
-        setPowerStatus('offline');
-      } else if (action === 'wakeup') {
-        // For wakeup, we use the dedicated WoL service instead of the server endpoint
-        // This solves the logical issue of trying to wake up a server by calling its own API
-        try {
-          console.log('Sending wake-up request to dedicated WoL service...');
-          const response = await axios.post(`${WOL_SERVICE_URL}/wakeup`, {}, { timeout: 5000 });
-          console.log('Wake-up request sent successfully:', response.data.message);
-        } catch (wakeupErr) {
-          console.error('Error sending wake-up request to WoL service:', wakeupErr.message);
-          
-          // Fallback to direct server API call (this will likely fail if server is offline)
-          try {
-            console.log('Attempting fallback to server API endpoint...');
-            await axios.post(`${API_URL}/api/power/wakeup`, {}, { timeout: 5000 });
-            console.log('Wake-up request sent successfully via server API');
-          } catch (fallbackErr) {
-            console.error('Fallback to server API failed:', fallbackErr.message);
-          }
-        }
-        
-        // Regardless of whether the API call succeeded, set status to starting
-        setPowerStatus('starting');
-        
-        // Poll for status more frequently after wake command
-        const checkStatus = async () => {
-          try {
-            const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
-            if (response.data.status === 'online') {
-              setPowerStatus('online');
-              return true;
-            }
-            return false;
-          } catch (err) {
-            return false;
-          }
-        };
-        
-        // Check every 2 seconds for 30 seconds
-        let attempts = 0;
-        const statusInterval = setInterval(async () => {
-          const isOnline = await checkStatus();
-          attempts++;
-          
-          if (isOnline || attempts >= 15) {
-            if (!isOnline && attempts >= 15) {
-              // If we've tried 15 times and the server is still not online,
-              // set the status back to offline
-              setPowerStatus('offline');
-            }
-            clearInterval(statusInterval);
-          }
-        }, 2000);
-      }
-    } catch (err) {
-      console.error(`Error ${action} server:`, err);
-      // Don't set error state, just log it
-      // This allows the UI to remain functional
-      
-      // If we failed to send the command, update the status accordingly
-      if (action === 'shutdown') {
-        // If shutdown failed, server is probably still online
-        setPowerStatus('online');
-      } else if (action === 'wakeup') {
-        // If wakeup failed, server is probably still offline
-        setPowerStatus('offline');
-      }
-    }
-  };
 
-  // Handle run Vllm
-  const handleRunVllm = async () => {
-    try {
-      await axios.post(`${API_URL}/api/command/start-vllm`, {}, { timeout: 5000 });
-      console.log('Vllm started successfully');
-    } catch (err) {
-      console.error('Error starting Vllm:', err);
-    }
-  };
 
   if (loading) {
     return (
@@ -209,7 +126,7 @@ function App() {
           <div className="lg:col-span-4">
             <PowerControl
               status={powerStatus}
-              onPowerControl={handlePowerControl}
+              onStatusChange={setPowerStatus}
             />
           </div>
         </main>
@@ -245,16 +162,14 @@ function App() {
 
           {/* Vllm Control */}
           <div className="lg:col-span-4">
-            <VllmControl
-              onRunVllm={handleRunVllm}
-            />
+            <VllmControl />
           </div>
           
           {/* Power Control */}
           <div className="lg:col-span-4">
-            <PowerControl 
-              status={powerStatus} 
-              onPowerControl={handlePowerControl} 
+            <PowerControl
+              status={powerStatus}
+              onStatusChange={setPowerStatus}
             />
           </div>
         </div>

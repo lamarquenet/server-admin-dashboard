@@ -1,13 +1,25 @@
 import React, { useState } from 'react';
 import { FaPowerOff, FaPlay, FaExclamationTriangle } from 'react-icons/fa';
+import axios from 'axios';
 
-const PowerControl = ({ status, onPowerControl }) => {
+// API URLs
+const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
+const WOL_SERVICE_URL = process.env.REACT_APP_WOL_SERVICE_URL || 'http://192.168.8.170:8002';
+
+const PowerControl = ({ status, onStatusChange }) => {
   const [confirmShutdown, setConfirmShutdown] = useState(false);
   
   // Handle shutdown confirmation
-  const handleShutdownClick = () => {
+  const handleShutdownClick = async () => {
     if (confirmShutdown) {
-      onPowerControl('shutdown');
+      try {
+        await axios.post(`${API_URL}/api/power/shutdown`, {}, { timeout: 5000 });
+        onStatusChange('offline');
+      } catch (err) {
+        console.error('Error shutting down server:', err);
+        // If shutdown failed, server is probably still online
+        onStatusChange('online');
+      }
       setConfirmShutdown(false);
     } else {
       setConfirmShutdown(true);
@@ -20,8 +32,63 @@ const PowerControl = ({ status, onPowerControl }) => {
   };
   
   // Handle wake up
-  const handleWakeUpClick = () => {
-    onPowerControl('wakeup');
+  const handleWakeUpClick = async () => {
+    try {
+      // For wakeup, we use the dedicated WoL service instead of the server endpoint
+      try {
+        console.log('Sending wake-up request to dedicated WoL service...');
+        const response = await axios.post(`${WOL_SERVICE_URL}/wakeup`, {}, { timeout: 5000 });
+        console.log('Wake-up request sent successfully:', response.data.message);
+      } catch (wakeupErr) {
+        console.error('Error sending wake-up request to WoL service:', wakeupErr.message);
+        
+        // Fallback to direct server API call (this will likely fail if server is offline)
+        try {
+          console.log('Attempting fallback to server API endpoint...');
+          await axios.post(`${API_URL}/api/power/wakeup`, {}, { timeout: 5000 });
+          console.log('Wake-up request sent successfully via server API');
+        } catch (fallbackErr) {
+          console.error('Fallback to server API failed:', fallbackErr.message);
+        }
+      }
+      
+      // Regardless of whether the API call succeeded, set status to starting
+      onStatusChange('starting');
+      
+      // Poll for status more frequently after wake command
+      const checkStatus = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
+          if (response.data.status === 'online') {
+            onStatusChange('online');
+            return true;
+          }
+          return false;
+        } catch (err) {
+          return false;
+        }
+      };
+      
+      // Check every 2 seconds for 30 seconds
+      let attempts = 0;
+      const statusInterval = setInterval(async () => {
+        const isOnline = await checkStatus();
+        attempts++;
+        
+        if (isOnline || attempts >= 15) {
+          if (!isOnline && attempts >= 15) {
+            // If we've tried 15 times and the server is still not online,
+            // set the status back to offline
+            onStatusChange('offline');
+          }
+          clearInterval(statusInterval);
+        }
+      }, 2000);
+    } catch (err) {
+      console.error('Error waking up server:', err);
+      // If wakeup failed, server is probably still offline
+      onStatusChange('offline');
+    }
   };
   
   // Determine status color
