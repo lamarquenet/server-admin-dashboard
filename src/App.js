@@ -139,39 +139,50 @@ function App() {
   return (
     <div className="min-h-screen bg-dark-800 text-white flex flex-col">
       <Header />
-      
-      <main className="flex-grow container mx-auto px-4 py-6">
+        <main className="flex-grow container mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* System Overview */}
-          <div className="lg:col-span-4">
-            <SystemOverview systemInfo={systemInfo} powerStatus={powerStatus} />
-          </div>
-          
-          {/* CPU and Memory */}
-          <div className="lg:col-span-2">
-            <CpuCard cpu={systemInfo.cpu} />
-          </div>
-          <div className="lg:col-span-2">
-            <MemoryCard memory={systemInfo.memory} />
-          </div>
-          
-          {/* GPUs */}
-          <div className="lg:col-span-4">
-            <GpuCards gpus={systemInfo.gpus} />
-          </div>
+          {/* Always show Power Control when offline or starting */}
+          {(powerStatus === 'offline') ? (
+            <div className="lg:col-span-4">
+              <PowerControl
+                status={powerStatus}
+                onStatusChange={setPowerStatus}
+              />
+            </div>
+          ) : (
+            <>
+              {/* System Overview */}
+              <div className="lg:col-span-4">
+                <SystemOverview systemInfo={systemInfo} powerStatus={powerStatus} />
+              </div>
+              
+              {/* CPU and Memory */}
+              <div className="lg:col-span-2">
+                <CpuCard cpu={systemInfo.cpu} />
+              </div>
+              <div className="lg:col-span-2">
+                <MemoryCard memory={systemInfo.memory} />
+              </div>
+              
+              {/* GPUs */}
+              <div className="lg:col-span-4">
+                <GpuCards gpus={systemInfo.gpus} />
+              </div>
 
-          {/* Vllm Control */}
-          <div className="lg:col-span-4">
-            <VllmControl />
-          </div>
-          
-          {/* Power Control */}
-          <div className="lg:col-span-4">
-            <PowerControl
-              status={powerStatus}
-              onStatusChange={setPowerStatus}
-            />
-          </div>
+              {/* Vllm Control */}
+              <div className="lg:col-span-4">
+                <VllmControl />
+              </div>
+              
+              {/* Power Control */}
+              <div className="lg:col-span-4">
+                <PowerControl
+                  status={powerStatus}
+                  onStatusChange={setPowerStatus}
+                />
+              </div>
+            </>
+          )}
         </div>
       </main>
       
