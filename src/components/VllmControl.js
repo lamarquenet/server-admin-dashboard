@@ -43,15 +43,46 @@ const VllmControl = () => {
   // Function to start VLLM service
   const startVllmService = async () => {
     try {
-      await axios.post(`${API_URL}/api/command/start-vllm`, {}, { timeout: 5000 });
-      console.log('Vllm started successfully');
-      // Set button to loading state for 40 seconds
+      // Set loading state before making the request
       setButtonState('loading');
       setTimer(125); // 125 seconds for loading (2 minutes 5 seconds)
+      
+      await axios.post(`${API_URL}/api/command/start-vllm`, {}, { timeout: 120000 });
+      console.log('Vllm start command sent successfully');
+      
+      // Start polling to check if VLLM is actually running
+      const checkVllmStatus = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/api/command/vllm-status`, { timeout: 3000 });
+          return response.data.status === 'running';
+        } catch (err) {
+          return false;
+        }
+      };
+
+      // Poll every 5 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const isRunning = await checkVllmStatus();
+          if (isRunning) {
+            setButtonState('ready');
+            clearInterval(pollInterval);
+          }
+        } catch (err) {
+          console.error('Error checking VLLM status:', err);
+        }
+      }, 5000);
+
+      // Clear polling after the timeout duration
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 125000); // 125 seconds timeout
+      
     } catch (err) {
       console.error('Error starting Vllm:', err);
-      // If there's an error, stay in normal state
+      // If there's an error starting, reset to normal state
       setButtonState('normal');
+      setTimer(0);
     }
   };
 
@@ -69,15 +100,49 @@ const VllmControl = () => {
   // Function to stop VLLM service
   const stopVllmService = async () => {
     try {
-      await axios.post(`${API_URL}/api/command/stop-vllm`, {}, { timeout: 5000 });
-      console.log('Vllm stopped successfully');
-      // Set to shutting down state for 10 seconds
+      // Set shutting down state before making the request
       setButtonState('shuttingDown');
-      setTimer(10);
+      setTimer(120); // 120 seconds timeout for shutdown
+      
+      await axios.post(`${API_URL}/api/command/stop-vllm`, {}, { timeout: 10000 }); // Increased timeout to 10s
+      console.log('Vllm stop command sent successfully');
+      
+      // Start polling to check if VLLM has stopped
+      const checkVllmStatus = async () => {
+        try {
+          const response = await axios.get(`${API_URL}/api/command/vllm-status`, { timeout: 3000 });
+          return response.data.status !== 'running';
+        } catch (err) {
+          return true; // If we can't reach the status endpoint, assume it's stopped
+        }
+      };
+
+      // Poll every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const isStopped = await checkVllmStatus();
+          if (isStopped) {
+            setButtonState('normal');
+            setTimer(0);
+            clearInterval(pollInterval);
+          }
+        } catch (err) {
+          console.error('Error checking VLLM status:', err);
+        }
+      }, 2000);
+
+      // Clear polling after the timeout duration
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setButtonState('normal'); // Revert to normal state after timeout
+        setTimer(0);
+      }, 30000); // 30 seconds timeout
+      
     } catch (err) {
       console.error('Error stopping Vllm:', err);
-      // If there's an error, return to normal state
-      setButtonState('normal');
+      // If there's an error stopping, keep the current state
+      setButtonState('ready');
+      setTimer(0);
     }
   };
 
