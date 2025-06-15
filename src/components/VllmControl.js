@@ -47,7 +47,7 @@ const VllmControl = () => {
       console.log('Vllm started successfully');
       // Set button to loading state for 40 seconds
       setButtonState('loading');
-      setTimer(40);
+      setTimer(125); // 125 seconds for loading (2 minutes 5 seconds)
     } catch (err) {
       console.error('Error starting Vllm:', err);
       // If there's an error, stay in normal state

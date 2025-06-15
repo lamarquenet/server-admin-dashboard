@@ -1,13 +1,66 @@
-import React, { useState } from 'react';
-import { FaPowerOff, FaPlay, FaExclamationTriangle } from 'react-icons/fa';
+import React, { useState, useEffect, useRef } from 'react';
+import { FaPowerOff, FaPlay, FaExclamationTriangle, FaSpinner } from 'react-icons/fa';
 import axios from 'axios';
 
 // API URLs
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
 const WOL_SERVICE_URL = process.env.REACT_APP_WOL_SERVICE_URL || 'http://192.168.8.170:8002';
 
+// Timeout duration in seconds (2 minutes)
+const TIMEOUT_DURATION = 120;
+
 const PowerControl = ({ status, onStatusChange }) => {
   const [confirmShutdown, setConfirmShutdown] = useState(false);
+  const [wakeupInProgress, setWakeupInProgress] = useState(false);
+  const [shutdownInProgress, setShutdownInProgress] = useState(false);
+  const [timeoutCounter, setTimeoutCounter] = useState(0);
+  
+  // Use refs to keep track of timers so we can clear them
+  const timerRef = useRef(null);
+  
+  // Effect to handle timeout counter
+  useEffect(() => {
+    if ((wakeupInProgress || shutdownInProgress) && timeoutCounter > 0) {
+      timerRef.current = setInterval(() => {
+        setTimeoutCounter(prev => {
+          if (prev <= 1) {
+            // When timer reaches 0, reset the progress states
+            if (wakeupInProgress) setWakeupInProgress(false);
+            if (shutdownInProgress) setShutdownInProgress(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [wakeupInProgress, shutdownInProgress, timeoutCounter]);
+  
+  // Effect to monitor status changes
+  useEffect(() => {
+    // If wakeup is in progress and status becomes online, reset wakeup progress
+    if (wakeupInProgress && status === 'online') {
+      setWakeupInProgress(false);
+      setTimeoutCounter(0);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+    
+    // If shutdown is in progress and status becomes offline, reset shutdown progress
+    if (shutdownInProgress && status === 'offline') {
+      setShutdownInProgress(false);
+      setTimeoutCounter(0);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    }
+  }, [status, wakeupInProgress, shutdownInProgress]);
   
   // Handle shutdown confirmation
   const handleShutdownClick = async () => {
@@ -15,6 +68,9 @@ const PowerControl = ({ status, onStatusChange }) => {
       try {
         await axios.post(`${API_URL}/api/power/shutdown`, {}, { timeout: 5000 });
         onStatusChange('offline');
+        // Set shutdown in progress and start the timeout counter
+        setShutdownInProgress(true);
+        setTimeoutCounter(TIMEOUT_DURATION);
       } catch (err) {
         console.error('Error shutting down server:', err);
         // If shutdown failed, server is probably still online
@@ -34,6 +90,10 @@ const PowerControl = ({ status, onStatusChange }) => {
   // Handle wake up
   const handleWakeUpClick = async () => {
     try {
+      // Set wakeup in progress and start the timeout counter
+      setWakeupInProgress(true);
+      setTimeoutCounter(TIMEOUT_DURATION);
+      
       // For wakeup, we use the dedicated WoL service instead of the server endpoint
       try {
         console.log('Sending wake-up request to dedicated WoL service...');
@@ -88,34 +148,47 @@ const PowerControl = ({ status, onStatusChange }) => {
       console.error('Error waking up server:', err);
       // If wakeup failed, server is probably still offline
       onStatusChange('offline');
+      setWakeupInProgress(false);
     }
   };
   
-  // Determine status color
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'online':
-        return 'bg-green-500';
-      case 'offline':
-        return 'bg-red-500';
-      case 'starting':
-        return 'bg-yellow-500 animate-pulse';
-      default:
-        return 'bg-gray-500';
+  // Determine status color based on both server status and operation progress
+  const getStatusColor = () => {
+    if (shutdownInProgress) {
+      return 'bg-yellow-500 animate-pulse';
+    } else if (wakeupInProgress) {
+      return 'bg-blue-500 animate-pulse';
+    } else {
+      switch (status) {
+        case 'online':
+          return 'bg-green-500';
+        case 'offline':
+          return 'bg-red-500';
+        case 'starting':
+          return 'bg-yellow-500 animate-pulse';
+        default:
+          return 'bg-gray-500';
+      }
     }
   };
   
-  // Determine status text
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'online':
-        return 'Server is online';
-      case 'offline':
-        return 'Server is offline';
-      case 'starting':
-        return 'Server is starting...';
-      default:
-        return 'Server status unknown';
+  // Determine status text based on both server status and operation progress
+  const getStatusText = () => {
+    if (shutdownInProgress) {
+      return `Server is shutting down... (${timeoutCounter}s remaining)`;
+    } else if (wakeupInProgress) {
+      return `Server is waking up... (${timeoutCounter}s remaining)`;
+    } else {
+      switch (status) {
+        case 'online':
+          return 'Server is online';
+        case 'offline':
+          return 'Server is offline';
+        case 'starting':
+          return 'Server is starting...';
+        default:
+          return 'Server status unknown';
+      }
     }
   };
   
@@ -131,12 +204,13 @@ const PowerControl = ({ status, onStatusChange }) => {
       <div className="mt-4">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center">
-            <span className={`h-3 w-3 rounded-full ${getStatusColor(status)} mr-2`}></span>
-            <span className="text-lg">{getStatusText(status)}</span>
+            <span className={`h-3 w-3 rounded-full ${getStatusColor()} mr-2`}></span>
+            <span className="text-lg">{getStatusText()}</span>
           </div>
           
           <div className="flex space-x-4">
-            {status === 'online' && (
+            {/* Shutdown button - only show when online and not in progress */}
+            {status === 'online' && !shutdownInProgress && (
               <button
                 className={`btn ${confirmShutdown ? 'btn-danger' : 'btn-secondary'}`}
                 onClick={handleShutdownClick}
@@ -155,6 +229,7 @@ const PowerControl = ({ status, onStatusChange }) => {
               </button>
             )}
             
+            {/* Cancel button for shutdown confirmation */}
             {confirmShutdown && (
               <button
                 className="btn btn-secondary"
@@ -164,7 +239,16 @@ const PowerControl = ({ status, onStatusChange }) => {
               </button>
             )}
             
-            {status === 'offline' && (
+            {/* Shutdown in progress indicator */}
+            {shutdownInProgress && (
+              <div className="flex items-center text-yellow-500">
+                <FaSpinner className="animate-spin mr-2" />
+                <span>Shutting down... ({timeoutCounter}s remaining)</span>
+              </div>
+            )}
+            
+            {/* Wake up button - only show when offline and not in progress */}
+            {status === 'offline' && !wakeupInProgress && (
               <button
                 className="btn btn-success"
                 onClick={handleWakeUpClick}
@@ -174,6 +258,14 @@ const PowerControl = ({ status, onStatusChange }) => {
                   Wake Up Server
                 </span>
               </button>
+            )}
+            
+            {/* Wake up in progress indicator */}
+            {wakeupInProgress && (
+              <div className="flex items-center text-green-500">
+                <FaSpinner className="animate-spin mr-2" />
+                <span>Waking up... ({timeoutCounter}s remaining)</span>
+              </div>
             )}
           </div>
         </div>
