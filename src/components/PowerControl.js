@@ -121,67 +121,50 @@ const PowerControl = ({ status, onStatusChange }) => {
   // Handle wake up
   const handleWakeUpClick = async () => {
     try {
-      // Set wakeup in progress and start the timeout counter
+      // Set wakeup state and timer first
       setWakeupInProgress(true);
       setTimeoutCounter(TIMEOUT_DURATION);
-      
-      // For wakeup, we use the dedicated WoL service instead of the server endpoint
-      try {
-        console.log('Sending wake-up request to dedicated WoL service...');
-        const response = await axios.post(`${WOL_SERVICE_URL}/wakeup`, {}, { timeout: 5000 });
-        console.log('Wake-up request sent successfully:', response.data.message);
-      } catch (wakeupErr) {
-        console.error('Error sending wake-up request to WoL service:', wakeupErr.message);
-        
-        // Fallback to direct server API call
-        try {
-          console.log('Attempting fallback to server API endpoint...');
-          await axios.post(`${API_URL}/api/power/wakeup`, {}, { timeout: 5000 });
-          console.log('Wake-up request sent successfully via server API');
-        } catch (fallbackErr) {
-          console.error('Fallback to server API failed:', fallbackErr.message);
-        }
-      }
-      
-      // Set status to starting
       onStatusChange('starting');
-      
-      // Poll for status less frequently to allow server time to boot
-      const checkStatus = async () => {
+
+      // Send wake-up command
+      try {
+        await axios.post(`${WOL_SERVICE_URL}/wakeup`, {}, { timeout: 5000 });
+        console.log('Wake-up command sent successfully');
+      } catch (wolErr) {
+        console.log('Primary WoL service failed, trying fallback...');
+        await axios.post(`${API_URL}/api/power/wakeup`, {}, { timeout: 5000 });
+      }
+
+      // Start polling with increasing intervals
+      let pollInterval = setInterval(async () => {
+        if (timeoutCounter <= 0) {
+          clearInterval(pollInterval);
+          setWakeupInProgress(false);
+          onStatusChange('offline');
+          return;
+        }
+
         try {
           const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
           if (response.data.status === 'online') {
-            onStatusChange('online');
+            clearInterval(pollInterval);
             setWakeupInProgress(false);
             setTimeoutCounter(0);
-            return true;
+            onStatusChange('online');
           }
-          return false;
         } catch (err) {
-          return false;
-        }
-      };
-      
-      // Check every 5 seconds until timeout or success
-      const statusInterval = setInterval(async () => {
-        const isOnline = await checkStatus();
-        if (isOnline) {
-          clearInterval(statusInterval);
+          // Ignore timeout errors during boot - this is expected
+          console.log('Server still booting...');
         }
       }, 5000);
-      
-      // Clear the interval after timeout duration
-      setTimeout(() => {
-        clearInterval(statusInterval);
-        if (wakeupInProgress) {
-          setWakeupInProgress(false);
-          setTimeoutCounter(0);
-          onStatusChange('offline');
-        }
-      }, TIMEOUT_DURATION * 1000);
-      
+
+      // Cleanup interval when component unmounts
+      return () => {
+        if (pollInterval) clearInterval(pollInterval);
+      };
+
     } catch (err) {
-      console.error('Error waking up server:', err);
+      console.error('Wake up process failed:', err);
       setWakeupInProgress(false);
       setTimeoutCounter(0);
       onStatusChange('offline');
