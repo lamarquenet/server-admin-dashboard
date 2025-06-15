@@ -62,7 +62,8 @@ const PowerControl = ({ status, onStatusChange }) => {
     }
   }, [status, wakeupInProgress, shutdownInProgress]);
   
-  // Handle shutdown confirmation  const handleShutdownClick = async () => {
+  // Handle shutdown confirmation
+  const handleShutdownClick = async () => {
     if (confirmShutdown) {
       try {
         // First set the shutdown in progress state and start the counter
