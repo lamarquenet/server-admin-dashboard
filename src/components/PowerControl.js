@@ -133,7 +133,7 @@ const PowerControl = ({ status, onStatusChange }) => {
       } catch (wakeupErr) {
         console.error('Error sending wake-up request to WoL service:', wakeupErr.message);
         
-        // Fallback to direct server API call (this will likely fail if server is offline)
+        // Fallback to direct server API call
         try {
           console.log('Attempting fallback to server API endpoint...');
           await axios.post(`${API_URL}/api/power/wakeup`, {}, { timeout: 5000 });
@@ -143,15 +143,17 @@ const PowerControl = ({ status, onStatusChange }) => {
         }
       }
       
-      // Regardless of whether the API call succeeded, set status to starting
+      // Set status to starting
       onStatusChange('starting');
       
-      // Poll for status more frequently after wake command
+      // Poll for status less frequently to allow server time to boot
       const checkStatus = async () => {
         try {
           const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
           if (response.data.status === 'online') {
             onStatusChange('online');
+            setWakeupInProgress(false);
+            setTimeoutCounter(0);
             return true;
           }
           return false;
@@ -160,26 +162,29 @@ const PowerControl = ({ status, onStatusChange }) => {
         }
       };
       
-      // Check every 2 seconds for 30 seconds
-      let attempts = 0;
+      // Check every 5 seconds until timeout or success
       const statusInterval = setInterval(async () => {
         const isOnline = await checkStatus();
-        attempts++;
-        
-        if (isOnline || attempts >= 15) {
-          if (!isOnline && attempts >= 15) {
-            // If we've tried 15 times and the server is still not online,
-            // set the status back to offline
-            onStatusChange('offline');
-          }
+        if (isOnline) {
           clearInterval(statusInterval);
         }
-      }, 2000);
+      }, 5000);
+      
+      // Clear the interval after timeout duration
+      setTimeout(() => {
+        clearInterval(statusInterval);
+        if (wakeupInProgress) {
+          setWakeupInProgress(false);
+          setTimeoutCounter(0);
+          onStatusChange('offline');
+        }
+      }, TIMEOUT_DURATION * 1000);
+      
     } catch (err) {
       console.error('Error waking up server:', err);
-      // If wakeup failed, server is probably still offline
-      onStatusChange('offline');
       setWakeupInProgress(false);
+      setTimeoutCounter(0);
+      onStatusChange('offline');
     }
   };
   
