@@ -56,7 +56,6 @@ function App() {
 
     // Handle errors
     socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err);
       // Don't set error, just mark as not loading and set power status to offline
       setLoading(false);
       setPowerStatus('offline');
@@ -77,7 +76,6 @@ function App() {
         const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
         setPowerStatus(response.data.status);
       } catch (err) {
-        console.error('Error fetching power status:', err);
         // Only set to offline if we're not in the starting state
         if (powerStatus !== 'starting') {
           setPowerStatus('offline');
