@@ -45,6 +45,7 @@ function App() {
 
     // Handle initial connection
     socket.on('connect', () => {
+      setPowerStatus('online');
       console.log('Connected to server');
     });
 
@@ -56,9 +57,12 @@ function App() {
 
     // Handle errors
     socket.on('connect_error', (err) => {
-      // Don't set error, just mark as not loading and set power status to offline
-      setLoading(false);
-      setPowerStatus('offline');
+      console.error('Socket connection error:', err);
+      // Only set to offline if we're not in the starting state
+      if (powerStatus !== 'starting') {
+        setLoading(false);
+        setPowerStatus('offline');
+      }
     });
 
     // Clean up event listeners
@@ -74,7 +78,10 @@ function App() {
     const fetchPowerStatus = async () => {
       try {
         const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
-        setPowerStatus(response.data.status);
+        console.log('Power status:', powerStatus);
+        if (powerStatus !== 'starting') {
+          setPowerStatus(response.data.status);
+        }
       } catch (err) {
         // Only set to offline if we're not in the starting state
         if (powerStatus !== 'starting') {
