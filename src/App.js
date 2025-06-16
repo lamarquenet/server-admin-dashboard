@@ -57,7 +57,6 @@ function App() {
 
     // Handle errors
     socket.on('connect_error', (err) => {
-      console.error('Socket connection error:', err);
       // Only set to offline if we're not in the starting state
       if (powerStatus !== 'starting') {
         setLoading(false);
@@ -78,8 +77,9 @@ function App() {
     const fetchPowerStatus = async () => {
       try {
         const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
-        console.log('Power status:', powerStatus);
-        if (powerStatus !== 'starting') {
+        if (powerStatus == 'starting') {
+          console.log('Wake-up process is in progress (starting state).');
+        } else {
           setPowerStatus(response.data.status);
         }
       } catch (err) {
@@ -177,7 +177,7 @@ function App() {
 
               {/* Vllm Control */}
               <div className="lg:col-span-4">
-                <VllmControl />
+                <VllmControl serverPowerStatus={powerStatus} />
               </div>
               
               {/* Power Control */}

@@ -5,13 +5,19 @@ import axios from 'axios';
 // API URL
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
 
-const VllmControl = () => {
+const VllmControl = ({ serverPowerStatus }) => {
   const [buttonState, setButtonState] = useState('normal'); // normal, loading, ready, shuttingDown
   const [timer, setTimer] = useState(0);
   
   // Function to check VLLM status
   const checkVllmStatus = async () => {
     try {
+      // Don't attempt to check status if server is not online
+      if (serverPowerStatus !== 'online') {
+        console.log('Server not online, skipping VLLM status check');
+        return;
+      }
+      
       const response = await axios.get(`${API_URL}/api/command/vllm-status`, { timeout: 3000 });
       console.log('VLLM periodic status check:', response.data);
       
@@ -32,6 +38,7 @@ const VllmControl = () => {
         setButtonState('normal');
       }
     } catch (err) {
+      console.log('Error checking VLLM status:', err.message);
       if (timer === 0) {
         // Only reset to normal if timer has expired
         if (buttonState !== 'loading' && buttonState !== 'shuttingDown') {
@@ -43,10 +50,13 @@ const VllmControl = () => {
 
   // Effect to periodically check VLLM status
   useEffect(() => {
-    checkVllmStatus();
-    const statusInterval = setInterval(checkVllmStatus, 5000);
-    return () => clearInterval(statusInterval);
-  }, [buttonState]); // Add buttonState as dependency
+    // Only check status if server is online
+    if (serverPowerStatus === 'online') {
+      checkVllmStatus();
+      const statusInterval = setInterval(checkVllmStatus, 5000);
+      return () => clearInterval(statusInterval);
+    }
+  }, [buttonState, serverPowerStatus]); // Add serverPowerStatus as dependency
 
   // Effect to handle timer countdown
   useEffect(() => {
@@ -68,8 +78,27 @@ const VllmControl = () => {
     return () => clearInterval(interval);
   }, [buttonState, timer]);
 
+  // Effect to reset state when server power status changes
+  useEffect(() => {
+    if (serverPowerStatus === 'starting') {
+      console.log('Server is starting up, resetting VLLM state');
+      setButtonState('normal');
+      setTimer(0);
+    } else if (serverPowerStatus === 'offline') {
+      console.log('Server is offline, resetting VLLM state');
+      setButtonState('normal');
+      setTimer(0);
+    }
+  }, [serverPowerStatus]);
+
   // Function to start VLLM service
   const startVllmService = async () => {
+    // Don't attempt to start if server is not online
+    if (serverPowerStatus !== 'online') {
+      console.log('Server not online, cannot start VLLM');
+      return;
+    }
+    
     setButtonState('loading');
     setTimer(150); // 2.5 minutes timeout
     
@@ -116,6 +145,12 @@ const VllmControl = () => {
 
   // Handle button click based on current state
   const handleButtonClick = () => {
+    // Don't allow actions if server is not online
+    if (serverPowerStatus !== 'online') {
+      console.log('Server not online, cannot perform VLLM actions');
+      return;
+    }
+    
     if (buttonState === 'normal') {
       startVllmService();
     } else if (buttonState === 'ready') {
@@ -189,15 +224,32 @@ const VllmControl = () => {
       <div className="mt-4">
         <div className="flex items-center justify-between mb-6">
           <div className="flex space-x-4">
-            {renderButton()}
+            {serverPowerStatus === 'online' ? (
+              renderButton()
+            ) : (
+              <button
+                className="btn btn-primary opacity-50 cursor-not-allowed"
+                disabled
+              >
+                <span className="flex items-center">
+                  <FaPlay className="mr-2" />
+                  Server {serverPowerStatus === 'starting' ? 'Starting...' : 'Offline'}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 
         <div className="bg-dark-600 rounded-lg p-4">
           <h3 className="text-sm font-semibold text-gray-400 mb-2">Vllm Control Information</h3>
           <p className="text-sm text-gray-300 mb-2">
-            This section allows you to start the Vllm service on your server. 
-            The status is checked every 10 seconds to ensure it reflects the current state.
+            This section allows you to start the Vllm service on your server.
+            The status is checked every 5 seconds to ensure it reflects the current state.
+            {serverPowerStatus !== 'online' && (
+              <span className="block mt-2 text-yellow-400">
+                Note: Server must be online to control VLLM service.
+              </span>
+            )}
           </p>
         </div>
       </div>
