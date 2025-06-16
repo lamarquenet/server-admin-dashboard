@@ -78,8 +78,10 @@ function App() {
         setPowerStatus(response.data.status);
       } catch (err) {
         console.error('Error fetching power status:', err);
-        // If we can't reach the server, set status to offline
-        setPowerStatus('offline');
+        // Only set to offline if we're not in the starting state
+        if (powerStatus !== 'starting') {
+          setPowerStatus('offline');
+        }
       }
     };
 
@@ -89,7 +91,7 @@ function App() {
     const interval = setInterval(fetchPowerStatus, 10000);
     
     return () => clearInterval(interval);
-  }, []);
+  }, [powerStatus]); // Add powerStatus as dependency
 
 
 
@@ -140,9 +142,8 @@ function App() {
     <div className="min-h-screen bg-dark-800 text-white flex flex-col">
       <Header />
         <main className="flex-grow container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Always show Power Control when offline or starting */}
-          {(powerStatus === 'offline') ? (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">          {/* Always show Power Control when offline or starting */}
+          {(powerStatus === 'offline' || powerStatus === 'starting') ? (
             <div className="lg:col-span-4">
               <PowerControl
                 status={powerStatus}

@@ -16,41 +16,37 @@ const VllmControl = () => {
       console.log('VLLM periodic status check:', response.data);
       
       if (response.data.status === 'running') {
-        // If VLLM is running, transition to ready state
         setButtonState('ready');
         setTimer(0);
       } else if (buttonState === 'shuttingDown') {
-        // If we're shutting down and VLLM is not running, complete the transition
         setButtonState('normal');
         setTimer(0);
       } else if (buttonState === 'loading') {
-        // If we're loading, keep the loading state until we see 'running'
-        // Do nothing - maintain loading state
+        // Keep loading state while timer is active
+        if (timer === 0) {
+          // If timer expired and still not running, consider it failed
+          setButtonState('normal');
+          console.error('VLLM failed to start within timeout period');
+        }
       } else {
-        // In any other case, set to normal
         setButtonState('normal');
       }
     } catch (err) {
-      console.log('VLLM status check error:', err.message);
-      // Only change state if we're not in a transitional state
-      if (buttonState !== 'loading' && buttonState !== 'shuttingDown') {
-        setButtonState('normal');
+      if (timer === 0) {
+        // Only reset to normal if timer has expired
+        if (buttonState !== 'loading' && buttonState !== 'shuttingDown') {
+          setButtonState('normal');
+        }
       }
-      // If we're in loading/shuttingDown state, maintain that state
     }
   };
 
   // Effect to periodically check VLLM status
   useEffect(() => {
-    // Check immediately on component mount
     checkVllmStatus();
-    
-    // Then check every 10 seconds
     const statusInterval = setInterval(checkVllmStatus, 5000);
-    
-    // Cleanup on unmount
     return () => clearInterval(statusInterval);
-  }, []); // Empty dependency array means this runs once on mount
+  }, [buttonState]); // Add buttonState as dependency
 
   // Effect to handle timer countdown
   useEffect(() => {
@@ -59,11 +55,12 @@ const VllmControl = () => {
     if ((buttonState === 'loading' || buttonState === 'shuttingDown') && timer > 0) {
       interval = setInterval(() => {
         setTimer(prevTimer => {
-          if (prevTimer <= 1) {
-            // Let the periodic status check handle the state change
-            return 0;
+          const newTimer = prevTimer - 1;
+          if (newTimer <= 0) {
+            // Force a status check when timer expires
+            checkVllmStatus();
           }
-          return prevTimer - 1;
+          return newTimer;
         });
       }, 1000);
     }
