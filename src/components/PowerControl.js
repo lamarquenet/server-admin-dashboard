@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FaPowerOff, FaPlay, FaExclamationTriangle, FaSpinner } from 'react-icons/fa';
 import axios from 'axios';
+import useInterval from '../hooks/useInterval';
 
 // API URLs
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
@@ -14,98 +15,95 @@ const PowerControl = ({ status, onStatusChange }) => {
   const [wakeupInProgress, setWakeupInProgress] = useState(false);
   const [shutdownInProgress, setShutdownInProgress] = useState(false);
   const [timeoutCounter, setTimeoutCounter] = useState(0);
+  const [pollingActive, setPollingActive] = useState(false);
   
-  // Use refs to keep track of timers so we can clear them
-  const timerRef = useRef(null);
+  // Use ref to track if component is mounted
+  const isMountedRef = useRef(true);
   
-  // Effect to handle timeout counter
+  // Cleanup on unmount
   useEffect(() => {
-    if ((wakeupInProgress || shutdownInProgress) && timeoutCounter > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeoutCounter(prev => {
-          if (prev <= 1) {
-            // When timer reaches 0, reset the progress states
-            if (wakeupInProgress) setWakeupInProgress(false);
-            if (shutdownInProgress) setShutdownInProgress(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      isMountedRef.current = false;
     };
-  }, [wakeupInProgress, shutdownInProgress, timeoutCounter]);
-  
-  // Effect to monitor status changes
+  }, []);
+
+  // Effect to monitor status changes and reset progress states
   useEffect(() => {
-    // If wakeup is in progress and status becomes online, reset wakeup progress
     if (wakeupInProgress && status === 'online') {
       setWakeupInProgress(false);
       setTimeoutCounter(0);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      setPollingActive(false);
     }
     
-    // If shutdown is in progress and status becomes offline, reset shutdown progress
     if (shutdownInProgress && status === 'offline') {
       setShutdownInProgress(false);
       setTimeoutCounter(0);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      setPollingActive(false);
     }
   }, [status, wakeupInProgress, shutdownInProgress]);
+
+  // useInterval for countdown timer
+  useInterval(() => {
+    if (timeoutCounter > 0) {
+      setTimeoutCounter(prev => {
+        if (prev <= 1) {
+          if (wakeupInProgress) setWakeupInProgress(false);
+          if (shutdownInProgress) setShutdownInProgress(false);
+          setPollingActive(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }
+  }, (wakeupInProgress || shutdownInProgress) && timeoutCounter > 0 ? 1000 : null);
+
+  // Check server status function
+  const checkServerStatus = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
+      return response.data.status;
+    } catch (err) {
+      return 'offline';
+    }
+  }, []);
+
+  // useInterval for polling server status during operations
+  useInterval(async () => {
+    if (!pollingActive) return;
+    
+    const serverStatus = await checkServerStatus();
+    
+    if (!isMountedRef.current) return;
+    
+    if (wakeupInProgress && serverStatus === 'online') {
+      setWakeupInProgress(false);
+      setTimeoutCounter(0);
+      setPollingActive(false);
+      onStatusChange('online');
+    } else if (shutdownInProgress && serverStatus === 'offline') {
+      setShutdownInProgress(false);
+      setTimeoutCounter(0);
+      setPollingActive(false);
+      onStatusChange('offline');
+    }
+  }, pollingActive ? 5000 : null, [pollingActive, wakeupInProgress, shutdownInProgress]);
   
   // Handle shutdown confirmation
   const handleShutdownClick = async () => {
     if (confirmShutdown) {
       try {
-        // First set the shutdown in progress state and start the counter
         setShutdownInProgress(true);
         setTimeoutCounter(TIMEOUT_DURATION);
         setConfirmShutdown(false);
+        setPollingActive(true);
         
         await axios.post(`${API_URL}/api/power/shutdown`, {}, { timeout: 5000 });
         
-        // Start polling the server status to detect when it actually goes offline
-        const checkStatus = async () => {
-          try {
-            const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
-            return response.data.status;
-          } catch (err) {
-            // If we can't reach the server, it's probably offline
-            return 'offline';
-          }
-        };
-        
-        // Check every 5 seconds
-        const statusInterval = setInterval(async () => {
-          const serverStatus = await checkStatus();
-          if (serverStatus === 'offline') {
-            onStatusChange('offline');
-            clearInterval(statusInterval);
-          }
-        }, 5000);
-        
-        // Clear the interval after the timeout duration
-        setTimeout(() => {
-          clearInterval(statusInterval);
-          if (!shutdownInProgress) {
-            onStatusChange('offline');
-          }
-        }, TIMEOUT_DURATION * 1000);
-        
       } catch (err) {
         console.error('Error shutting down server:', err);
-        // If shutdown command failed, reset everything
         setShutdownInProgress(false);
         setTimeoutCounter(0);
+        setPollingActive(false);
         onStatusChange('online');
       }
     } else {
@@ -121,9 +119,9 @@ const PowerControl = ({ status, onStatusChange }) => {
   // Handle wake up
   const handleWakeUpClick = async () => {
     try {
-      // Set wakeup state and timer first
       setWakeupInProgress(true);
       setTimeoutCounter(TIMEOUT_DURATION);
+      setPollingActive(true);
       onStatusChange('starting');
 
       // Send wake-up command
@@ -135,38 +133,11 @@ const PowerControl = ({ status, onStatusChange }) => {
         await axios.post(`${API_URL}/api/power/wakeup`, {}, { timeout: 5000 });
       }
 
-      // Start polling with increasing intervals
-      let pollInterval = setInterval(async () => {
-        if (timeoutCounter <= 0) {
-          clearInterval(pollInterval);
-          setWakeupInProgress(false);
-          onStatusChange('offline');
-          return;
-        }
-
-        try {
-          const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
-          if (response.data.status === 'online') {
-            clearInterval(pollInterval);
-            setWakeupInProgress(false);
-            setTimeoutCounter(0);
-            onStatusChange('online');
-          }
-        } catch (err) {
-          // Ignore timeout errors during boot - this is expected
-          console.log('Server still booting...');
-        }
-      }, 5000);
-
-      // Cleanup interval when component unmounts
-      return () => {
-        if (pollInterval) clearInterval(pollInterval);
-      };
-
     } catch (err) {
       console.error('Wake up process failed:', err);
       setWakeupInProgress(false);
       setTimeoutCounter(0);
+      setPollingActive(false);
       onStatusChange('offline');
     }
   };

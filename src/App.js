@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 import axios from 'axios';
+import useInterval from './hooks/useInterval';
 
 // Components
 import Header from './components/Header';
@@ -11,6 +12,8 @@ import GpuCards from './components/GpuCards';
 import PowerControl from './components/PowerControl';
 import Footer from './components/Footer';
 import VllmControl from './components/VllmControl';
+import OllamaControl from './components/OllamaControl';
+import PerformanceDashboard from './components/PerformanceDashboard';
 
 // API URLs
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
@@ -24,8 +27,7 @@ function App() {
   });
   const [powerStatus, setPowerStatus] = useState('unknown');
   const [loading, setLoading] = useState(true);
-  // Using array destructuring to ignore the setter function since it's not used
-  const [error] = useState(null);
+  const [error, setError] = useState(null);
   const [socket, setSocket] = useState(null);
 
   // Initialize socket connection
@@ -70,35 +72,32 @@ function App() {
       socket.off('systemInfo');
       socket.off('connect_error');
     };
-  }, [socket]);
+  }, [socket, powerStatus]);
 
-  // Fetch power status
-  useEffect(() => {
-    const fetchPowerStatus = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
-        if (powerStatus == 'starting') {
-          console.log('Wake-up process is in progress (starting state).');
-        } else {
-          setPowerStatus(response.data.status);
-        }
-      } catch (err) {
-        // Only set to offline if we're not in the starting state
-        if (powerStatus !== 'starting') {
-          setPowerStatus('offline');
-        }
+  // Fetch power status function
+  const fetchPowerStatus = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/power/status`, { timeout: 3000 });
+      if (powerStatus === 'starting') {
+        console.log('Wake-up process is in progress (starting state).');
+      } else {
+        setPowerStatus(response.data.status);
       }
-    };
+    } catch (err) {
+      // Only set to offline if we're not in the starting state
+      if (powerStatus !== 'starting') {
+        setPowerStatus('offline');
+      }
+    }
+  };
 
+  // Initial fetch
+  useEffect(() => {
     fetchPowerStatus();
-    
-    // Poll for power status every 10 seconds
-    const interval = setInterval(fetchPowerStatus, 10000);
-    
-    return () => clearInterval(interval);
-  }, [powerStatus]); // Add powerStatus as dependency
+  }, []);
 
-
+  // Poll for power status every 10 seconds using useInterval
+  useInterval(fetchPowerStatus, 10000, [powerStatus]);
 
   if (loading) {
     return (
@@ -146,8 +145,9 @@ function App() {
   return (
     <div className="min-h-screen bg-dark-800 text-white flex flex-col">
       <Header />
-        <main className="flex-grow container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">          {/* Always show Power Control when offline or starting */}
+      <main className="flex-grow container mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Always show Power Control when offline or starting */}
           {(powerStatus === 'offline' || powerStatus === 'starting') ? (
             <div className="lg:col-span-4">
               <PowerControl
@@ -175,9 +175,17 @@ function App() {
                 <GpuCards gpus={systemInfo.gpus} />
               </div>
 
-              {/* Vllm Control */}
+              {/* Performance Dashboard */}
               <div className="lg:col-span-4">
+                <PerformanceDashboard serverPowerStatus={powerStatus} />
+              </div>
+
+              {/* AI Services Controls */}
+              <div className="lg:col-span-2">
                 <VllmControl serverPowerStatus={powerStatus} />
+              </div>
+              <div className="lg:col-span-2">
+                <OllamaControl serverPowerStatus={powerStatus} />
               </div>
               
               {/* Power Control */}
