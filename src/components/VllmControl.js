@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip } from 'react-icons/fa';
+import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip, FaInfoCircle } from 'react-icons/fa';
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
 import LogsViewer from './LogsViewer';
@@ -24,6 +24,15 @@ const VllmControl = ({ serverPowerStatus }) => {
       isMountedRef.current = false;
     };
   }, []);
+
+  // Format context length (e.g., 128000 -> "128K")
+  const formatContextLength = (len) => {
+    if (!len) return 'N/A';
+    if (len >= 1000) {
+      return `${(len / 1000).toFixed(len % 1000 === 0 ? 0 : 1)}K`;
+    }
+    return len.toString();
+  };
 
   // Fetch vLLM metrics
   const fetchMetrics = useCallback(async () => {
@@ -215,6 +224,72 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   };
 
+  // Render model configuration section (only when running)
+  const renderModelConfig = () => {
+    if (buttonState !== 'ready') return null;
+
+    const config = getSelectedModelInfo();
+    if (!config) return null;
+
+    return (
+      <div className="mt-4 bg-dark-700 rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center">
+          <FaInfoCircle className="mr-2" />
+          Loaded Model Configuration
+        </h3>
+
+        <div className="bg-dark-600 rounded-lg p-3 mb-3">
+          <div className="text-lg font-bold text-white mb-1">{config.name}</div>
+          <div className="text-sm text-gray-400 font-mono">{config.id}</div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">Quantization</div>
+            <div className="text-white font-semibold">
+              {config.quantization ? config.quantization.toUpperCase() : 'None (FP16)'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">Context Length</div>
+            <div className="text-white font-semibold">
+              {formatContextLength(config.maxModelLen)}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">KV Cache</div>
+            <div className="text-white font-semibold">
+              {config.kvCacheDtype ? config.kvCacheDtype.toUpperCase() : 'FP16'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">GPU Memory Target</div>
+            <div className="text-white font-semibold">
+              {Math.round(config.gpuMemoryUtilization * 100)}%
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">Tensor Parallel</div>
+            <div className="text-white font-semibold">
+              {config.tensorParallelSize || 1} GPU{(config.tensorParallelSize || 1) > 1 ? 's' : ''}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">Port</div>
+            <div className="text-white font-semibold">
+              {config.port || 8001}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderMetrics = () => {
     if (buttonState !== 'ready') return null;
 
@@ -261,8 +336,8 @@ const VllmControl = ({ serverPowerStatus }) => {
           </div>
         )}
 
-        {/* Performance Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Performance Grid - Row 1 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="flex items-center text-gray-400 text-xs mb-1">
               <FaTachometerAlt className="mr-1" />
@@ -279,7 +354,7 @@ const VllmControl = ({ serverPowerStatus }) => {
               GPU Cache
             </div>
             <div className="text-xl font-bold text-blue-400">
-              {metrics?.gpuCacheUsage !== null ? `${formatNum(metrics.gpuCacheUsage)}%` : 'N/A'}
+              {metrics?.gpuCacheUsage !== null && metrics?.gpuCacheUsage !== undefined ? `${formatNum(metrics.gpuCacheUsage)}%` : 'N/A'}
             </div>
           </div>
 
@@ -296,17 +371,35 @@ const VllmControl = ({ serverPowerStatus }) => {
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="flex items-center text-gray-400 text-xs mb-1">
               <FaTasks className="mr-1" />
-              Running
+              Requests
             </div>
             <div className="text-xl font-bold text-white">
-              {metrics?.requestsRunning ?? 0}
+              {metrics?.requestsRunning ?? 0} / {metrics?.requestsWaiting ?? 0}
+            </div>
+            <div className="text-xs text-gray-500">running / waiting</div>
+          </div>
+        </div>
+
+        {/* Performance Grid - Row 2: Token Stats */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">Prompt Tokens</div>
+            <div className="text-lg font-bold text-cyan-400">
+              {metrics?.totalPromptTokens ? metrics.totalPromptTokens.toLocaleString() : '0'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="text-gray-400 text-xs mb-1">Generation Tokens</div>
+            <div className="text-lg font-bold text-orange-400">
+              {metrics?.totalGenerationTokens ? metrics.totalGenerationTokens.toLocaleString() : '0'}
             </div>
           </div>
         </div>
 
         {/* KV Cache Bar */}
         {metrics?.kvCacheUsedPerc !== null && metrics?.kvCacheUsedPerc !== undefined && (
-          <div className="mt-4 bg-dark-600 rounded-lg p-3">
+          <div className="bg-dark-600 rounded-lg p-3">
             <div className="flex justify-between text-xs text-gray-400 mb-2">
               <span>KV Cache Memory Usage</span>
               <span>{formatNum(metrics.kvCacheUsedPerc)}%</span>
@@ -382,7 +475,7 @@ const VllmControl = ({ serverPowerStatus }) => {
             </div>
           </div>
 
-          {selectedModel && getSelectedModelInfo() && (
+          {selectedModel && getSelectedModelInfo() && buttonState !== 'ready' && (
             <div className="bg-dark-600 rounded-lg p-3 mb-4">
               <p className="text-sm text-gray-300">
                 {getSelectedModelInfo().description}
@@ -390,18 +483,21 @@ const VllmControl = ({ serverPowerStatus }) => {
             </div>
           )}
 
-          <div className="bg-dark-600 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-gray-400 mb-2">vLLM Control Information</h3>
-            <p className="text-sm text-gray-300 mb-2">
-              Start the vLLM inference server with the selected configuration.
-              {serverPowerStatus !== 'online' && (
-                <span className="block mt-2 text-yellow-400">
-                  Note: Server must be online to control vLLM service.
-                </span>
-              )}
-            </p>
-          </div>
+          {buttonState !== 'ready' && (
+            <div className="bg-dark-600 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-400 mb-2">vLLM Control Information</h3>
+              <p className="text-sm text-gray-300 mb-2">
+                Start the vLLM inference server with the selected configuration.
+                {serverPowerStatus !== 'online' && (
+                  <span className="block mt-2 text-yellow-400">
+                    Note: Server must be online to control vLLM service.
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
 
+          {renderModelConfig()}
           {renderMetrics()}
         </div>
       </div>
