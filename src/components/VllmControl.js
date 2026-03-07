@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt } from 'react-icons/fa';
+import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip } from 'react-icons/fa';
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
 import LogsViewer from './LogsViewer';
@@ -8,23 +8,40 @@ import LogsViewer from './LogsViewer';
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
 
 const VllmControl = ({ serverPowerStatus }) => {
-  const [buttonState, setButtonState] = useState('normal'); // normal, loading, ready, shuttingDown
+  const [buttonState, setButtonState] = useState('normal');
   const [timer, setTimer] = useState(0);
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [defaultModel, setDefaultModel] = useState('');
   const [loadingModels, setLoadingModels] = useState(true);
   const [showLogs, setShowLogs] = useState(false);
-  
-  // Use ref to track if component is mounted
+  const [metrics, setMetrics] = useState(null);
+
   const isMountedRef = useRef(true);
-  
-  // Cleanup on unmount
+
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
     };
   }, []);
+
+  // Fetch vLLM metrics
+  const fetchMetrics = useCallback(async () => {
+    if (buttonState !== 'ready') return;
+
+    try {
+      const response = await axios.get(`${API_URL}/api/performance/vllm`, { timeout: 3000 });
+      if (isMountedRef.current) {
+        setMetrics(response.data.details || null);
+      }
+    } catch (err) {
+      if (isMountedRef.current) {
+        setMetrics(null);
+      }
+    }
+  }, [buttonState]);
+
+  useInterval(fetchMetrics, buttonState === 'ready' ? 3000 : null, [buttonState]);
 
   // Fetch available models
   useEffect(() => {
@@ -50,18 +67,15 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   }, [serverPowerStatus]);
 
-  // Function to check VLLM status
+  // Check VLLM status
   const checkVllmStatus = useCallback(async () => {
-    if (serverPowerStatus !== 'online') {
-      console.log('Server not online, skipping VLLM status check');
-      return;
-    }
-    
+    if (serverPowerStatus !== 'online') return;
+
     try {
       const response = await axios.get(`${API_URL}/api/command/vllm-status`, { timeout: 3000 });
-      
+
       if (!isMountedRef.current) return;
-      
+
       if (response.data.status === 'running') {
         setButtonState('ready');
         setTimer(0);
@@ -71,15 +85,13 @@ const VllmControl = ({ serverPowerStatus }) => {
       } else if (buttonState === 'loading') {
         if (timer === 0) {
           setButtonState('normal');
-          console.error('VLLM failed to start within timeout period');
         }
       } else {
         setButtonState('normal');
       }
     } catch (err) {
-      console.log('Error checking VLLM status:', err.message);
       if (!isMountedRef.current) return;
-      
+
       if (timer === 0) {
         if (buttonState !== 'loading' && buttonState !== 'shuttingDown') {
           setButtonState('normal');
@@ -88,10 +100,8 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   }, [serverPowerStatus, buttonState, timer]);
 
-  // useInterval for periodic status check
   useInterval(checkVllmStatus, serverPowerStatus === 'online' ? 5000 : null, [buttonState, serverPowerStatus]);
 
-  // useInterval for timer countdown
   useInterval(() => {
     if (timer > 0) {
       setTimer(prevTimer => {
@@ -104,7 +114,6 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   }, (buttonState === 'loading' || buttonState === 'shuttingDown') && timer > 0 ? 1000 : null, [buttonState]);
 
-  // Effect to reset state when server power status changes
   useEffect(() => {
     if (serverPowerStatus === 'starting' || serverPowerStatus === 'offline') {
       setButtonState('normal');
@@ -112,18 +121,16 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   }, [serverPowerStatus]);
 
-  // Function to start VLLM service
   const startVllmService = async () => {
     if (serverPowerStatus !== 'online') return;
-    
+
     setButtonState('loading');
-    setTimer(150); // 2.5 minutes timeout
-    
+    setTimer(150);
+
     try {
-      await axios.post(`${API_URL}/api/command/start-vllm`, { 
-        model: selectedModel || defaultModel 
+      await axios.post(`${API_URL}/api/command/start-vllm`, {
+        model: selectedModel || defaultModel
       });
-      console.log('VLLM start command sent');
     } catch (err) {
       console.error('Error starting VLLM:', err.response?.data || err.message);
       setButtonState('normal');
@@ -131,14 +138,12 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   };
 
-  // Function to stop VLLM service
   const stopVllmService = async () => {
     setButtonState('shuttingDown');
     setTimer(20);
-    
+
     try {
       await axios.post(`${API_URL}/api/command/stop-vllm`, {});
-      console.log('VLLM stop command sent');
     } catch (err) {
       console.error('Error stopping VLLM:', err.response?.data || err.message);
       setButtonState('ready');
@@ -146,10 +151,9 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   };
 
-  // Handle button click
   const handleButtonClick = () => {
     if (serverPowerStatus !== 'online') return;
-    
+
     if (buttonState === 'normal') {
       startVllmService();
     } else if (buttonState === 'ready') {
@@ -157,17 +161,19 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   };
 
-  // Handle model selection change
   const handleModelChange = (e) => {
     setSelectedModel(e.target.value);
   };
 
-  // Get selected model info
   const getSelectedModelInfo = () => {
     return models.find(m => m.key === selectedModel);
   };
 
-  // Render button based on state
+  const formatNum = (num, decimals = 1) => {
+    if (num === null || num === undefined) return 'N/A';
+    return Number(num).toFixed(decimals);
+  };
+
   const renderButton = () => {
     switch (buttonState) {
       case 'loading':
@@ -209,6 +215,117 @@ const VllmControl = ({ serverPowerStatus }) => {
     }
   };
 
+  const renderMetrics = () => {
+    if (buttonState !== 'ready') return null;
+
+    const gpuMem = metrics?.gpuMemory;
+
+    return (
+      <div className="mt-4 bg-dark-700 rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center">
+          <FaTachometerAlt className="mr-2" />
+          vLLM Performance Metrics
+        </h3>
+
+        {/* GPU Memory Section */}
+        {gpuMem && (
+          <div className="mb-4 bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-2">
+              <FaMicrochip className="mr-1" />
+              GPU Memory
+            </div>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-lg font-bold text-white">
+                {gpuMem.usedGB} GB / {gpuMem.totalGB} GB
+              </span>
+              <span className={`text-sm font-semibold ${
+                gpuMem.usagePercent > 80 ? 'text-red-400' :
+                gpuMem.usagePercent > 60 ? 'text-yellow-400' : 'text-green-400'
+              }`}>
+                {gpuMem.usagePercent}%
+              </span>
+            </div>
+            <div className="w-full bg-dark-800 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  gpuMem.usagePercent > 80 ? 'bg-red-500' :
+                  gpuMem.usagePercent > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                }`}
+                style={{ width: `${Math.min(gpuMem.usagePercent, 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>Model + KV Cache</span>
+              <span>{gpuMem.freeGB} GB free</span>
+            </div>
+          </div>
+        )}
+
+        {/* Performance Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaTachometerAlt className="mr-1" />
+              Tokens/sec
+            </div>
+            <div className="text-xl font-bold text-green-400">
+              {metrics?.tokensPerSecond ? formatNum(metrics.tokensPerSecond, 1) : 'N/A'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaMemory className="mr-1" />
+              GPU Cache
+            </div>
+            <div className="text-xl font-bold text-blue-400">
+              {metrics?.gpuCacheUsage !== null ? `${formatNum(metrics.gpuCacheUsage)}%` : 'N/A'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaClock className="mr-1" />
+              Avg TTFT
+            </div>
+            <div className="text-xl font-bold text-purple-400">
+              {metrics?.timeToFirstToken ? `${formatNum(metrics.timeToFirstToken * 1000, 0)}ms` : 'N/A'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaTasks className="mr-1" />
+              Running
+            </div>
+            <div className="text-xl font-bold text-white">
+              {metrics?.requestsRunning ?? 0}
+            </div>
+          </div>
+        </div>
+
+        {/* KV Cache Bar */}
+        {metrics?.kvCacheUsedPerc !== null && metrics?.kvCacheUsedPerc !== undefined && (
+          <div className="mt-4 bg-dark-600 rounded-lg p-3">
+            <div className="flex justify-between text-xs text-gray-400 mb-2">
+              <span>KV Cache Memory Usage</span>
+              <span>{formatNum(metrics.kvCacheUsedPerc)}%</span>
+            </div>
+            <div className="w-full bg-dark-800 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  metrics.kvCacheUsedPerc > 80 ? 'bg-red-500' :
+                  metrics.kvCacheUsedPerc > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                }`}
+                style={{ width: `${Math.min(metrics.kvCacheUsedPerc, 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
       <div className="card">
@@ -222,7 +339,6 @@ const VllmControl = ({ serverPowerStatus }) => {
         <div className="mt-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2 flex-wrap gap-2">
-              {/* Model selector */}
               <div className="flex items-center space-x-2">
                 <FaCog className="text-gray-400" />
                 <select
@@ -244,7 +360,7 @@ const VllmControl = ({ serverPowerStatus }) => {
                   )}
                 </select>
               </div>
-              
+
               {serverPowerStatus === 'online' ? (
                 renderButton()
               ) : (
@@ -255,8 +371,7 @@ const VllmControl = ({ serverPowerStatus }) => {
                   </span>
                 </button>
               )}
-              
-              {/* View Logs button */}
+
               <button
                 className="btn btn-secondary"
                 onClick={() => setShowLogs(true)}
@@ -267,7 +382,6 @@ const VllmControl = ({ serverPowerStatus }) => {
             </div>
           </div>
 
-          {/* Selected model description */}
           {selectedModel && getSelectedModelInfo() && (
             <div className="bg-dark-600 rounded-lg p-3 mb-4">
               <p className="text-sm text-gray-300">
@@ -287,10 +401,11 @@ const VllmControl = ({ serverPowerStatus }) => {
               )}
             </p>
           </div>
+
+          {renderMetrics()}
         </div>
       </div>
-      
-      {/* Logs Modal */}
+
       {showLogs && (
         <LogsViewer service="vllm" onClose={() => setShowLogs(false)} />
       )}
