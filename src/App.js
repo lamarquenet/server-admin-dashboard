@@ -14,6 +14,9 @@ import Footer from './components/Footer';
 import VllmControl from './components/VllmControl';
 import OllamaControl from './components/OllamaControl';
 import PerformanceDashboard from './components/PerformanceDashboard';
+import CostTracking from './components/CostTracking';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import BenchmarkPanel from './components/BenchmarkPanel';
 
 // API URLs
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
@@ -178,6 +181,21 @@ function App() {
               {/* Performance Dashboard */}
               <div className="lg:col-span-4">
                 <PerformanceDashboard serverPowerStatus={powerStatus} />
+              </div>
+
+              {/* Cost Tracking */}
+              <div className="lg:col-span-2">
+                <CostTracking serverPowerStatus={powerStatus} />
+              </div>
+
+              {/* Analytics Dashboard */}
+              <div className="lg:col-span-2">
+                <AnalyticsDashboard serverPowerStatus={powerStatus} />
+              </div>
+
+              {/* Benchmark Panel */}
+              <div className="lg:col-span-4">
+                <BenchmarkPanel serverPowerStatus={powerStatus} />
               </div>
 
               {/* AI Services Controls */}
