@@ -1,18 +1,64 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FaPlay, FaSpinner, FaHistory, FaClock, FaTachometerAlt, FaMicrochip, FaTrash } from 'react-icons/fa';
+import { FaPlay, FaSpinner, FaHistory, FaClock, FaTachometerAlt, FaMicrochip, FaExclamationTriangle } from 'react-icons/fa';
 import axios from 'axios';
+import useInterval from '../hooks/useInterval';
 
 // API URL
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
+const VLLM_URL = 'http://192.168.8.209:8001';
 
-const BenchmarkPanel = ({ serverPowerStatus, vllmStatus }) => {
+const BenchmarkPanel = ({ serverPowerStatus }) => {
   const [benchmarks, setBenchmarks] = useState(null);
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
+
+  // Service state
   const [selectedService, setSelectedService] = useState('vllm');
-  const [modelInput, setModelInput] = useState('');
+  const [vllmModel, setVllmModel] = useState(null);
+  const [vllmRunning, setVllmRunning] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState([]);
+  const [selectedOllamaModel, setSelectedOllamaModel] = useState('');
+
+  // Check vLLM status and get current model
+  const checkVllmStatus = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/command/vllm-status`, { timeout: 3000 });
+      const isRunning = response.data.status === 'running';
+      setVllmRunning(isRunning);
+
+      if (isRunning) {
+        // Get the currently loaded model from vLLM
+        try {
+          const modelsRes = await axios.get(`${VLLM_URL}/v1/models`, { timeout: 3000 });
+          const modelId = modelsRes.data?.data?.[0]?.id;
+          setVllmModel(modelId || null);
+        } catch {
+          setVllmModel(null);
+        }
+      } else {
+        setVllmModel(null);
+      }
+    } catch {
+      setVllmRunning(false);
+      setVllmModel(null);
+    }
+  }, []);
+
+  // Fetch Ollama models
+  const fetchOllamaModels = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/ollama/models`, { timeout: 5000 });
+      const models = response.data?.models || [];
+      setOllamaModels(models.map(m => m.name));
+      if (models.length > 0 && !selectedOllamaModel) {
+        setSelectedOllamaModel(models[0].name);
+      }
+    } catch {
+      setOllamaModels([]);
+    }
+  }, [selectedOllamaModel]);
 
   // Fetch benchmark results and config
   const fetchData = useCallback(async () => {
@@ -40,13 +86,20 @@ const BenchmarkPanel = ({ serverPowerStatus, vllmStatus }) => {
   useEffect(() => {
     if (serverPowerStatus === 'online') {
       fetchData();
+      checkVllmStatus();
+      fetchOllamaModels();
     }
-  }, [serverPowerStatus, fetchData]);
+  }, [serverPowerStatus, fetchData, checkVllmStatus, fetchOllamaModels]);
+
+  // Poll vLLM status every 5 seconds
+  useInterval(checkVllmStatus, serverPowerStatus === 'online' ? 5000 : null);
 
   // Run benchmark
   const runBenchmark = async () => {
-    if (!modelInput.trim()) {
-      setError('Please enter a model name');
+    const model = selectedService === 'vllm' ? vllmModel : selectedOllamaModel;
+
+    if (!model) {
+      setError(selectedService === 'vllm' ? 'vLLM is not running' : 'Please select a model');
       return;
     }
 
@@ -55,14 +108,12 @@ const BenchmarkPanel = ({ serverPowerStatus, vllmStatus }) => {
 
     try {
       const response = await axios.post(`${API_URL}/api/benchmark/run`, {
-        model: modelInput.trim(),
+        model: model,
         service: selectedService
       }, { timeout: 120000 }); // 2 minute timeout
 
       // Refresh results
       fetchData();
-
-      // Show the new result
       console.log('Benchmark completed:', response.data);
     } catch (err) {
       setError(err.response?.data?.error || err.message);
@@ -130,8 +181,8 @@ const BenchmarkPanel = ({ serverPowerStatus, vllmStatus }) => {
             </div>
           )}
 
-          {/* Input Controls */}
-          <div className="flex flex-wrap gap-3">
+          {/* Service Selection */}
+          <div className="flex flex-wrap gap-3 mb-4">
             <select
               className="bg-dark-600 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
               value={selectedService}
@@ -142,20 +193,47 @@ const BenchmarkPanel = ({ serverPowerStatus, vllmStatus }) => {
               <option value="ollama">Ollama</option>
             </select>
 
-            <input
-              type="text"
-              className="bg-dark-600 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-primary-500 flex-1 min-w-[200px]"
-              placeholder="Model name (e.g., cyankiwi-qwen3-coder-next)"
-              value={modelInput}
-              onChange={(e) => setModelInput(e.target.value)}
-              disabled={running}
-              onKeyDown={(e) => e.key === 'Enter' && !running && runBenchmark()}
-            />
+            {/* vLLM: Show current model status */}
+            {selectedService === 'vllm' && (
+              <div className="flex-1 flex items-center gap-3">
+                {vllmRunning && vllmModel ? (
+                  <div className="flex-1 bg-dark-600 border border-gray-600 rounded px-3 py-2">
+                    <span className="text-xs text-gray-400">Current model: </span>
+                    <span className="text-sm text-white font-semibold">{vllmModel}</span>
+                  </div>
+                ) : (
+                  <div className="flex-1 bg-yellow-900/20 border border-yellow-700/50 rounded px-3 py-2 flex items-center">
+                    <FaExclamationTriangle className="text-yellow-400 mr-2" />
+                    <span className="text-sm text-yellow-400">
+                      {vllmRunning ? 'No model loaded' : 'vLLM is not running'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ollama: Show model dropdown */}
+            {selectedService === 'ollama' && (
+              <select
+                className="flex-1 bg-dark-600 border border-gray-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-primary-500"
+                value={selectedOllamaModel}
+                onChange={(e) => setSelectedOllamaModel(e.target.value)}
+                disabled={running || ollamaModels.length === 0}
+              >
+                {ollamaModels.length === 0 ? (
+                  <option value="">No models available</option>
+                ) : (
+                  ollamaModels.map(model => (
+                    <option key={model} value={model}>{model}</option>
+                  ))
+                )}
+              </select>
+            )}
 
             <button
               className={`btn ${running ? 'btn-secondary opacity-75' : 'btn-primary'}`}
               onClick={runBenchmark}
-              disabled={running || !modelInput.trim()}
+              disabled={running || (selectedService === 'vllm' && !vllmModel) || (selectedService === 'ollama' && !selectedOllamaModel)}
             >
               {running ? (
                 <span className="flex items-center">
