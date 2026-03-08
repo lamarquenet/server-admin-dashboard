@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FaDollarSign, FaBolt, FaChartLine, FaSync } from 'react-icons/fa';
+import { FaDollarSign, FaBolt, FaChartLine, FaSync, FaRedo, FaTrash } from 'react-icons/fa';
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
 
@@ -11,6 +11,7 @@ const CostTracking = ({ serverPowerStatus }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [resetting, setResetting] = useState({ session: false, monthly: false });
 
   // Fetch cost data
   const fetchCostData = useCallback(async () => {
@@ -39,6 +40,36 @@ const CostTracking = ({ serverPowerStatus }) => {
 
   // Auto-refresh every 60 seconds (1 minute)
   useInterval(fetchCostData, autoRefresh && serverPowerStatus === 'online' ? 60000 : null);
+
+  // Reset session energy
+  const resetSession = async () => {
+    if (!window.confirm('Reset session energy counter to 0?')) return;
+
+    setResetting(prev => ({ ...prev, session: true }));
+    try {
+      await axios.post(`${API_URL}/api/cost/reset-session`, {}, { timeout: 10000 });
+      await fetchCostData(); // Refresh data
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setResetting(prev => ({ ...prev, session: false }));
+    }
+  };
+
+  // Reset monthly energy
+  const resetMonthly = async () => {
+    if (!window.confirm('Reset monthly energy counter to 0?')) return;
+
+    setResetting(prev => ({ ...prev, monthly: true }));
+    try {
+      await axios.post(`${API_URL}/api/cost/reset-monthly`, {}, { timeout: 10000 });
+      await fetchCostData(); // Refresh data
+    } catch (err) {
+      setError(err.response?.data?.error || err.message);
+    } finally {
+      setResetting(prev => ({ ...prev, monthly: false }));
+    }
+  };
 
   // Format currency
   const formatCurrency = (value) => {
@@ -138,9 +169,19 @@ const CostTracking = ({ serverPowerStatus }) => {
         <div className="grid grid-cols-2 gap-4">
           {/* Session Cost */}
           <div className="bg-gradient-to-br from-green-900/30 to-green-800/20 rounded-lg p-4 border border-green-700/50">
-            <div className="flex items-center text-green-400 text-sm mb-2">
-              <FaBolt className="mr-2" />
-              Current Session
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center text-green-400 text-sm">
+                <FaBolt className="mr-2" />
+                Current Session
+              </div>
+              <button
+                className="text-xs text-gray-400 hover:text-white p-1"
+                onClick={resetSession}
+                disabled={resetting.session}
+                title="Reset session counter"
+              >
+                <FaRedo className={resetting.session ? 'animate-spin' : ''} />
+              </button>
             </div>
             <div className="text-3xl font-bold text-white mb-1">
               {formatCurrency(costData?.totalCostUsd)}
@@ -152,9 +193,19 @@ const CostTracking = ({ serverPowerStatus }) => {
 
           {/* Monthly Cost */}
           <div className="bg-gradient-to-br from-blue-900/30 to-blue-800/20 rounded-lg p-4 border border-blue-700/50">
-            <div className="flex items-center text-blue-400 text-sm mb-2">
-              <FaChartLine className="mr-2" />
-              This Month
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center text-blue-400 text-sm">
+                <FaChartLine className="mr-2" />
+                This Month
+              </div>
+              <button
+                className="text-xs text-gray-400 hover:text-white p-1"
+                onClick={resetMonthly}
+                disabled={resetting.monthly}
+                title="Reset monthly counter"
+              >
+                <FaRedo className={resetting.monthly ? 'animate-spin' : ''} />
+              </button>
             </div>
             <div className="text-3xl font-bold text-white mb-1">
               {formatCurrency(costData?.monthlyCostUsd)}
