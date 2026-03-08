@@ -37,8 +37,8 @@ const CostTracking = ({ serverPowerStatus }) => {
     }
   }, [serverPowerStatus, fetchCostData]);
 
-  // Auto-refresh every 30 seconds
-  useInterval(fetchCostData, autoRefresh && serverPowerStatus === 'online' ? 30000 : null);
+  // Auto-refresh every 60 seconds (1 minute)
+  useInterval(fetchCostData, autoRefresh && serverPowerStatus === 'online' ? 60000 : null);
 
   // Format currency
   const formatCurrency = (value) => {
