@@ -18,6 +18,7 @@ const VllmControl = ({ serverPowerStatus }) => {
   const [metrics, setMetrics] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [ov, setOv] = useState(null);  // advanced launch options (per-model, remembered)
+  const [launchMeta, setLaunchMeta] = useState(null);  // { currentModel, runningModelId, lastLaunched } from /vllm-models
 
   const isMountedRef = useRef(true);
 
@@ -62,7 +63,14 @@ const VllmControl = ({ serverPowerStatus }) => {
         if (isMountedRef.current) {
           setModels(response.data.models || []);
           setDefaultModel(response.data.defaultModel || '');
-          setSelectedModel(response.data.defaultModel || '');
+          // Prefer the model vLLM is actually serving (or last launched) over
+          // the catalog default, so a page reload while running shows reality.
+          setSelectedModel(response.data.currentModel || response.data.defaultModel || '');
+          setLaunchMeta({
+            currentModel: response.data.currentModel || null,
+            runningModelId: response.data.runningModelId || null,
+            lastLaunched: response.data.lastLaunched || null,
+          });
           setLoadingModels(false);
         }
       } catch (err) {
@@ -446,8 +454,27 @@ const VllmControl = ({ serverPowerStatus }) => {
   const renderModelConfig = () => {
     if (buttonState !== 'ready') return null;
 
-    const config = getSelectedModelInfo();
+    // Show the model vLLM is actually serving (launchMeta), not whatever the
+    // catalog default is. Overlay the resolved launch values when available.
+    const shownKey = launchMeta?.currentModel || selectedModel;
+    const config = models.find(m => m.key === shownKey) || getSelectedModelInfo();
     if (!config) return null;
+    const resolved = launchMeta?.lastLaunched?.resolvedConfig;
+    const actual = resolved && resolved.key === shownKey ? resolved : null;
+
+    // Quantization lives in the checkpoint for AWQ/INT8 builds (no --quantization
+    // flag), so derive the label from the model id when the catalog has none.
+    const quantFromId = (id) => {
+      if (/AWQ-INT4/i.test(id)) return 'AWQ INT4';
+      if (/AWQ/i.test(id)) return 'AWQ';
+      if (/INT8/i.test(id)) return 'INT8';
+      return null;
+    };
+    const quantLabel = config.quantization
+      ? config.quantization.toUpperCase()
+      : quantFromId(launchMeta?.runningModelId || config.id) || 'None (FP16)';
+
+    const tp = actual?.tensorParallelSize ?? config.tensorParallelSize ?? 1;
 
     return (
       <div className="mt-4 bg-dark-700 rounded-lg p-4">
@@ -458,49 +485,51 @@ const VllmControl = ({ serverPowerStatus }) => {
 
         <div className="bg-dark-600 rounded-lg p-3 mb-3">
           <div className="text-lg font-bold text-white mb-1">{config.name}</div>
-          <div className="text-sm text-gray-400 font-mono">{config.id}</div>
+          <div className="text-sm text-gray-400 font-mono">
+            {launchMeta?.runningModelId || config.id}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="text-gray-400 text-xs mb-1">Quantization</div>
-            <div className="text-white font-semibold">
-              {config.quantization ? config.quantization.toUpperCase() : 'None (FP16)'}
-            </div>
+            <div className="text-white font-semibold">{quantLabel}</div>
           </div>
 
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="text-gray-400 text-xs mb-1">Context Length</div>
             <div className="text-white font-semibold">
-              {formatContextLength(config.maxModelLen)}
+              {formatContextLength(actual?.maxModelLen ?? config.maxModelLen)}
             </div>
           </div>
 
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="text-gray-400 text-xs mb-1">KV Cache</div>
             <div className="text-white font-semibold">
-              {config.kvCacheDtype ? config.kvCacheDtype.toUpperCase() : 'FP16'}
+              {(actual?.kvCacheDtype ?? config.kvCacheDtype)
+                ? (actual?.kvCacheDtype ?? config.kvCacheDtype).toUpperCase()
+                : 'FP16'}
             </div>
           </div>
 
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="text-gray-400 text-xs mb-1">GPU Memory Target</div>
             <div className="text-white font-semibold">
-              {Math.round(config.gpuMemoryUtilization * 100)}%
+              {Math.round((actual?.gpuMemoryUtilization ?? config.gpuMemoryUtilization) * 100)}%
             </div>
           </div>
 
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="text-gray-400 text-xs mb-1">Tensor Parallel</div>
             <div className="text-white font-semibold">
-              {config.tensorParallelSize || 1} GPU{(config.tensorParallelSize || 1) > 1 ? 's' : ''}
+              {tp} GPU{tp > 1 ? 's' : ''}
             </div>
           </div>
 
           <div className="bg-dark-600 rounded-lg p-3">
-            <div className="text-gray-400 text-xs mb-1">Port</div>
+            <div className="text-gray-400 text-xs mb-1">Prefix Caching</div>
             <div className="text-white font-semibold">
-              {config.port || 8001}
+              {(actual?.prefixCaching ?? config.prefixCaching) ? 'On' : 'Off'}
             </div>
           </div>
         </div>
