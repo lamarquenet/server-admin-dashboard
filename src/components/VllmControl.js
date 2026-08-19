@@ -253,8 +253,8 @@ const VllmControl = ({ serverPowerStatus }) => {
     const model = getSelectedModelInfo();
     if (!model || !ov || buttonState !== 'normal') return null;
 
-    const ctxOptions = [...new Set([32768, 65536, 131072, 262144, model.maxModelLen])]
-      .filter(v => v <= model.maxModelLen)
+    const ctxOptions = [...new Set([32768, 65536, 131072, 262144, model.maxModelLen, model.maxModelLenNative])]
+      .filter(v => v <= (model.maxModelLenNative || model.maxModelLen))
       .sort((a, b) => a - b);
     const gpuMemOptions = [];
     for (let v = 0.50; v <= 0.951; v += 0.05) gpuMemOptions.push(Number(v.toFixed(2)));
