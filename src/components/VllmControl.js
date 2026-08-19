@@ -511,7 +511,7 @@ const VllmControl = ({ serverPowerStatus }) => {
             </div>
             <div className="flex justify-between items-center mb-2">
               <span className="text-lg font-bold text-white">
-                {gpuMem.usedGB} GB / {gpuMem.totalGB} GB
+                {gpuMem.activeUsedGB ?? gpuMem.usedGB} GB / {gpuMem.activeTotalGB ?? gpuMem.totalGB} GB
               </span>
               <span className={`text-sm font-semibold ${
                 gpuMem.usagePercent > 80 ? 'text-red-400' :
@@ -530,8 +530,8 @@ const VllmControl = ({ serverPowerStatus }) => {
               />
             </div>
             <div className="flex justify-between text-xs text-gray-500 mt-1">
-              <span>Model + KV Cache</span>
-              <span>{gpuMem.freeGB} GB free</span>
+              <span>{gpuMem.activeGpus ? `${gpuMem.activeGpus} active GPU${gpuMem.activeGpus > 1 ? 's' : ''} · Model + KV Cache` : 'Model + KV Cache'}</span>
+              <span>{gpuMem.freeGB} GB free total</span>
             </div>
           </div>
         )}
