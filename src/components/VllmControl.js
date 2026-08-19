@@ -310,10 +310,13 @@ const VllmControl = ({ serverPowerStatus }) => {
               <div>
                 <label className={labelCls}>Tensor parallel</label>
                 <select className={selectCls} value={ov.tp} onChange={e => setOvField('tp', e.target.value)}>
-                  <option value="1">1 GPU</option>
-                  <option value="2">2 GPUs</option>
-                  <option value="4">4 GPUs</option>
+                  {[1, 2, 4].filter(n => n >= (model.minTensorParallelSize || 1)).map(n => (
+                    <option key={n} value={String(n)}>{n} GPU{n > 1 ? 's' : ''}</option>
+                  ))}
                 </select>
+                {(model.minTensorParallelSize || 1) > 1 && (
+                  <div className="text-xs text-gray-500 mt-1">weights need ≥ {model.minTensorParallelSize} GPUs</div>
+                )}
               </div>
 
               <div>
