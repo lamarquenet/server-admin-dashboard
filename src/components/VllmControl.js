@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip, FaInfoCircle } from 'react-icons/fa';
+import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip, FaInfoCircle, FaSlidersH, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
 import LogsViewer from './LogsViewer';
@@ -16,6 +16,8 @@ const VllmControl = ({ serverPowerStatus }) => {
   const [loadingModels, setLoadingModels] = useState(true);
   const [showLogs, setShowLogs] = useState(false);
   const [metrics, setMetrics] = useState(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [ov, setOv] = useState(null);  // advanced launch options (per-model, remembered)
 
   const isMountedRef = useRef(true);
 
@@ -137,9 +139,17 @@ const VllmControl = ({ serverPowerStatus }) => {
     setTimer(150);
 
     try {
+      const modelKey = selectedModel || defaultModel;
       await axios.post(`${API_URL}/api/command/start-vllm`, {
-        model: selectedModel || defaultModel
+        model: modelKey,
+        overrides: buildOverrides(),
       });
+      // Remember the last config used for this model
+      if (ov) {
+        try {
+          localStorage.setItem(`vllm:lastConfig:${modelKey}`, JSON.stringify(ov));
+        } catch { /* localStorage unavailable */ }
+      }
     } catch (err) {
       console.error('Error starting VLLM:', err.response?.data || err.message);
       setButtonState('normal');
@@ -178,9 +188,199 @@ const VllmControl = ({ serverPowerStatus }) => {
     return models.find(m => m.key === selectedModel);
   };
 
+  // ---- Advanced launch options ----
+
+  // Initialize options from model defaults, or the last config used for this model
+  useEffect(() => {
+    const model = models.find(m => m.key === selectedModel);
+    if (!model) return;
+    const defaults = {
+      thinking: 'thinking',
+      effort: 'xhigh',
+      tp: String(model.tensorParallelSize || 1),
+      gpuMem: String(model.gpuMemoryUtilization || 0.9),
+      ctx: String(model.maxModelLen),
+      kv: model.kvCacheDtype || 'auto',
+      mtp: model.speculativeTokens ? String(model.speculativeTokens) : 'off',
+      parser: model.reasoningParser ? 'on' : 'off',
+    };
+    let saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(`vllm:lastConfig:${selectedModel}`) || 'null');
+    } catch { saved = null; }
+    setOv({ ...defaults, ...(saved && typeof saved === 'object' ? saved : {}) });
+  }, [selectedModel, models]);
+
+  const setOvField = (field, value) => setOv(prev => ({ ...(prev || {}), [field]: value }));
+
+  // Build the overrides payload for POST /api/command/start-vllm
+  const buildOverrides = () => {
+    const model = getSelectedModelInfo();
+    if (!model || !ov) return undefined;
+    const payload = {
+      tensorParallelSize: Number(ov.tp),
+      gpuMemoryUtilization: Number(ov.gpuMem),
+      maxModelLen: Number(ov.ctx),
+      kvCacheDtype: ov.kv,
+      reasoningParser: ov.parser === 'on',
+    };
+    if (model.mtpSupported) {
+      payload.speculativeEnabled = ov.mtp !== 'off';
+      if (ov.mtp !== 'off') payload.speculativeTokens = Number(ov.mtp);
+    }
+    if (model.thinkingSupported) payload.thinkingMode = ov.thinking;
+    return payload;
+  };
+
+  // Per-request kwargs snippet shown to the user (effort is request-level, not launch-level)
+  const getRequestKwargsSnippet = () => {
+    const model = getSelectedModelInfo();
+    if (!model || !model.thinkingSupported || !ov) return null;
+    const thinking = ov.thinking === 'thinking';
+    const kwargs = thinking
+      ? { enable_thinking: true, reasoning_effort: ov.effort }
+      : { enable_thinking: false };
+    return `"chat_template_kwargs": ${JSON.stringify(kwargs)}`;
+  };
+
   const formatNum = (num, decimals = 1) => {
     if (num === null || num === undefined) return 'N/A';
     return Number(num).toFixed(decimals);
+  };
+
+  // Advanced launch options panel (visible when stopped — options apply at Start)
+  const renderAdvancedOptions = () => {
+    const model = getSelectedModelInfo();
+    if (!model || !ov || buttonState !== 'normal') return null;
+
+    const ctxOptions = [...new Set([32768, 65536, 131072, 262144, model.maxModelLen])]
+      .filter(v => v <= model.maxModelLen)
+      .sort((a, b) => a - b);
+    const gpuMemOptions = [];
+    for (let v = 0.50; v <= 0.951; v += 0.05) gpuMemOptions.push(Number(v.toFixed(2)));
+    const snippet = getRequestKwargsSnippet();
+
+    const selectCls = "bg-dark-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-primary-500 w-full";
+    const labelCls = "text-xs text-gray-400 mb-1 block";
+
+    return (
+      <div className="bg-dark-600 rounded-lg p-3 mb-4">
+        <button
+          className="flex items-center justify-between w-full text-sm font-semibold text-gray-400 hover:text-gray-200"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+        >
+          <span className="flex items-center">
+            <FaSlidersH className="mr-2" />
+            Launch options
+          </span>
+          {showAdvanced ? <FaChevronUp /> : <FaChevronDown />}
+        </button>
+
+        {showAdvanced && (
+          <div className="mt-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {model.thinkingSupported ? (
+                <div>
+                  <label className={labelCls}>Thinking mode</label>
+                  <select className={selectCls} value={ov.thinking} onChange={e => setOvField('thinking', e.target.value)}>
+                    <option value="thinking">Thinking</option>
+                    <option value="instruct">Instruct</option>
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className={labelCls}>Thinking mode</label>
+                  <select className={`${selectCls} opacity-50`} disabled>
+                    <option>Non-thinking model</option>
+                  </select>
+                </div>
+              )}
+
+              {model.thinkingSupported && ov.thinking === 'thinking' && (
+                <div>
+                  <label className={labelCls}>Reasoning effort</label>
+                  <select className={selectCls} value={ov.effort} onChange={e => setOvField('effort', e.target.value)}>
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="xhigh">xhigh</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className={labelCls}>Tensor parallel</label>
+                <select className={selectCls} value={ov.tp} onChange={e => setOvField('tp', e.target.value)}>
+                  <option value="1">1 GPU</option>
+                  <option value="2">2 GPUs</option>
+                  <option value="4">4 GPUs</option>
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>GPU memory target</label>
+                <select className={selectCls} value={ov.gpuMem} onChange={e => setOvField('gpuMem', e.target.value)}>
+                  {gpuMemOptions.map(v => (
+                    <option key={v} value={String(v)}>{Math.round(v * 100)}%</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>Context length</label>
+                <select className={selectCls} value={ov.ctx} onChange={e => setOvField('ctx', e.target.value)}>
+                  {ctxOptions.map(v => (
+                    <option key={v} value={String(v)}>{formatContextLength(v)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>KV cache dtype</label>
+                <select className={selectCls} value={ov.kv} onChange={e => setOvField('kv', e.target.value)}>
+                  <option value="auto">auto (fp16)</option>
+                  <option value="fp8">fp8</option>
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>MTP speculative</label>
+                <select
+                  className={`${selectCls} ${!model.mtpSupported ? 'opacity-50' : ''}`}
+                  value={model.mtpSupported ? ov.mtp : 'off'}
+                  disabled={!model.mtpSupported}
+                  onChange={e => setOvField('mtp', e.target.value)}
+                >
+                  <option value="off">off</option>
+                  {[1, 2, 3, 4].map(n => (
+                    <option key={n} value={String(n)}>{n} tokens</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>Reasoning parser</label>
+                <select className={selectCls} value={ov.parser} onChange={e => setOvField('parser', e.target.value)}>
+                  <option value="on">on</option>
+                  <option value="off">off</option>
+                </select>
+              </div>
+            </div>
+
+            {snippet && (
+              <div className="mt-3 bg-dark-800 rounded p-2 font-mono text-xs text-gray-400 overflow-x-auto">
+                <div className="text-gray-500 mb-1">Per-request thinking control (use in your clients):</div>
+                {snippet}
+              </div>
+            )}
+
+            <p className="text-xs text-gray-500 mt-2">
+              Options apply at Start and are remembered per model. Sampling defaults (temperature/top_p) follow
+              the selected thinking mode automatically.
+            </p>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderButton = () => {
@@ -482,6 +682,8 @@ const VllmControl = ({ serverPowerStatus }) => {
               </p>
             </div>
           )}
+
+          {renderAdvancedOptions()}
 
           {buttonState !== 'ready' && (
             <div className="bg-dark-600 rounded-lg p-4">
