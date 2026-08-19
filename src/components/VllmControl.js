@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip, FaInfoCircle, FaSlidersH, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip, FaInfoCircle, FaSlidersH, FaChevronDown, FaChevronUp, FaHourglassHalf, FaBolt } from 'react-icons/fa';
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
 import LogsViewer from './LogsViewer';
@@ -203,6 +203,7 @@ const VllmControl = ({ serverPowerStatus }) => {
       kv: model.kvCacheDtype || 'auto',
       mtp: model.speculativeTokens ? String(model.speculativeTokens) : 'off',
       parser: model.reasoningParser ? 'on' : 'off',
+      prefix: model.prefixCaching ? 'on' : 'off',
     };
     let saved = null;
     try {
@@ -223,6 +224,7 @@ const VllmControl = ({ serverPowerStatus }) => {
       maxModelLen: ov.ctx === 'auto' ? 'auto' : Number(ov.ctx),
       kvCacheDtype: ov.kv,
       reasoningParser: ov.parser === 'on',
+      prefixCaching: ov.prefix === 'on',
     };
     if (model.mtpSupported) {
       payload.speculativeEnabled = ov.mtp !== 'off';
@@ -371,6 +373,15 @@ const VllmControl = ({ serverPowerStatus }) => {
                   <option value="off">off</option>
                 </select>
               </div>
+
+              <div>
+                <label className={labelCls}>Prefix caching</label>
+                <select className={selectCls} value={ov.prefix} onChange={e => setOvField('prefix', e.target.value)}>
+                  <option value="on">on</option>
+                  <option value="off">off</option>
+                </select>
+                <div className="text-xs text-gray-500 mt-1">cached prefixes cut prefill, but hold KV blocks</div>
+              </div>
             </div>
 
             {snippet && (
@@ -502,11 +513,32 @@ const VllmControl = ({ serverPowerStatus }) => {
 
     const gpuMem = metrics?.gpuMemory;
 
+    // Live phase badge: prefilling (prompt ingest) / generating (tokens out) / idle.
+    // tokensPerSecond is the last measured rate — it stays visible between requests.
+    const phase = metrics?.phase;
+    const phaseInfo = !phase ? null : ({
+      prefilling: {
+        label: `Prefilling${phase.elapsedSec > 0 ? ` · ${phase.elapsedSec}s` : ''}`,
+        cls: 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30',
+      },
+      generating: {
+        label: phase.elapsedSec > 0 ? `Generating · ${phase.elapsedSec}s` : 'Generating',
+        cls: 'bg-green-500/15 text-green-400 border border-green-500/30',
+      },
+      idle: { label: 'Idle', cls: 'bg-gray-500/15 text-gray-400 border border-gray-500/30' },
+    })[phase.state];
+    const generating = phase?.state === 'generating';
+
     return (
       <div className="mt-4 bg-dark-700 rounded-lg p-4">
         <h3 className="text-sm font-semibold text-gray-400 mb-3 flex items-center">
           <FaTachometerAlt className="mr-2" />
           vLLM Performance Metrics
+          {phaseInfo && (
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold ${phaseInfo.cls}`}>
+              {phaseInfo.label}
+            </span>
+          )}
         </h3>
 
         {/* GPU Memory Section */}
@@ -550,9 +582,14 @@ const VllmControl = ({ serverPowerStatus }) => {
               <FaTachometerAlt className="mr-1" />
               Tokens/sec
             </div>
-            <div className="text-xl font-bold text-green-400">
-              {metrics?.tokensPerSecond ? formatNum(metrics.tokensPerSecond, 1) : 'N/A'}
+            <div className={`text-xl font-bold ${generating ? 'text-green-400' : 'text-gray-500'}`}>
+              {metrics?.tokensPerSecond !== null && metrics?.tokensPerSecond !== undefined
+                ? formatNum(metrics.tokensPerSecond, 1)
+                : 'N/A'}
             </div>
+            {!generating && metrics?.tokensPerSecond !== null && metrics?.tokensPerSecond !== undefined && (
+              <div className="text-[10px] text-gray-500">last measured</div>
+            )}
           </div>
 
           <div className="bg-dark-600 rounded-lg p-3">
@@ -587,7 +624,46 @@ const VllmControl = ({ serverPowerStatus }) => {
           </div>
         </div>
 
-        {/* Performance Grid - Row 2: Token Stats */}
+        {/* Performance Grid - Row 2: prefill / decode / cache */}
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaHourglassHalf className="mr-1" />
+              Avg Prefill
+            </div>
+            <div className="text-xl font-bold text-yellow-400">
+              {metrics?.avgPrefillTimeMs !== null && metrics?.avgPrefillTimeMs !== undefined
+                ? `${formatNum(metrics.avgPrefillTimeMs / 1000, 1)}s`
+                : 'N/A'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaPlay className="mr-1" />
+              Avg Decode
+            </div>
+            <div className="text-xl font-bold text-orange-400">
+              {metrics?.avgDecodeTimeMs !== null && metrics?.avgDecodeTimeMs !== undefined
+                ? `${formatNum(metrics.avgDecodeTimeMs / 1000, 1)}s`
+                : 'N/A'}
+            </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaBolt className="mr-1" />
+              Cache Hit
+            </div>
+            <div className="text-xl font-bold text-cyan-400">
+              {metrics?.cacheHitPerc !== null && metrics?.cacheHitPerc !== undefined
+                ? `${formatNum(metrics.cacheHitPerc)}%`
+                : 'N/A'}
+            </div>
+          </div>
+        </div>
+
+        {/* Performance Grid - Row 3: Token Stats */}
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="text-gray-400 text-xs mb-1">Prompt Tokens</div>
