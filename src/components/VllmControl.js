@@ -220,7 +220,7 @@ const VllmControl = ({ serverPowerStatus }) => {
     const payload = {
       tensorParallelSize: Number(ov.tp),
       gpuMemoryUtilization: Number(ov.gpuMem),
-      maxModelLen: Number(ov.ctx),
+      maxModelLen: ov.ctx === 'auto' ? 'auto' : Number(ov.ctx),
       kvCacheDtype: ov.kv,
       reasoningParser: ov.parser === 'on',
     };
@@ -253,7 +253,10 @@ const VllmControl = ({ serverPowerStatus }) => {
     const model = getSelectedModelInfo();
     if (!model || !ov || buttonState !== 'normal') return null;
 
-    const ctxOptions = [...new Set([32768, 65536, 131072, 262144, model.maxModelLen, model.maxModelLenNative])]
+    const ctxOptions = [...new Set([
+      8192, 16384, 32768, 49152, 65536, 98304, 131072, 196608, 262144,
+      model.maxModelLen, model.maxModelLenNative,
+    ])]
       .filter(v => v <= (model.maxModelLenNative || model.maxModelLen))
       .sort((a, b) => a - b);
     const gpuMemOptions = [];
@@ -334,6 +337,7 @@ const VllmControl = ({ serverPowerStatus }) => {
                   {ctxOptions.map(v => (
                     <option key={v} value={String(v)}>{formatContextLength(v)}</option>
                   ))}
+                  <option value="auto">auto ({formatContextLength(model.maxModelLenNative || model.maxModelLen)} native)</option>
                 </select>
               </div>
 
