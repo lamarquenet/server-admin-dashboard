@@ -3,6 +3,7 @@ import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory,
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
 import LogsViewer from './LogsViewer';
+import MetricsHistoryPanel from './MetricsHistoryPanel';
 
 // API URL
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
@@ -843,6 +844,9 @@ const VllmControl = ({ serverPowerStatus }) => {
 
           {renderModelConfig()}
           {renderMetrics()}
+          {serverPowerStatus === 'online' && (
+            <MetricsHistoryPanel currentModel={launchMeta?.currentModel || selectedModel} />
+          )}
         </div>
       </div>
 
