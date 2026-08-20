@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip, FaInfoCircle, FaSlidersH, FaChevronDown, FaChevronUp, FaHourglassHalf, FaBolt } from 'react-icons/fa';
+import { FaPlay, FaSpinner, FaStop, FaCog, FaFileAlt, FaTachometerAlt, FaMemory, FaClock, FaTasks, FaMicrochip, FaInfoCircle, FaSlidersH, FaChevronDown, FaChevronUp, FaHourglassHalf, FaBolt, FaExclamationTriangle } from 'react-icons/fa';
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
 import LogsViewer from './LogsViewer';
@@ -670,8 +670,8 @@ const VllmControl = ({ serverPowerStatus }) => {
           </div>
         </div>
 
-        {/* Performance Grid - Row 2: prefill / decode / cache */}
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        {/* Performance Grid - Row 2: prefill / decode / cache / preemptions */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div className="bg-dark-600 rounded-lg p-3">
             <div className="flex items-center text-gray-400 text-xs mb-1">
               <FaHourglassHalf className="mr-1" />
@@ -706,6 +706,19 @@ const VllmControl = ({ serverPowerStatus }) => {
                 ? `${formatNum(metrics.cacheHitPerc)}%`
                 : 'N/A'}
             </div>
+          </div>
+
+          <div className="bg-dark-600 rounded-lg p-3">
+            <div className="flex items-center text-gray-400 text-xs mb-1">
+              <FaExclamationTriangle className="mr-1" />
+              Preemptions
+            </div>
+            <div className={`text-xl font-bold ${metrics?.numPreemptions > 0 ? 'text-red-400' : 'text-green-400'}`}>
+              {metrics?.numPreemptions !== null && metrics?.numPreemptions !== undefined
+                ? Math.round(metrics.numPreemptions)
+                : 'N/A'}
+            </div>
+            <div className="text-[10px] text-gray-500">requests paused by KV memory pressure · 0 is healthy</div>
           </div>
         </div>
 
