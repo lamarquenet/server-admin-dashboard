@@ -148,7 +148,7 @@ const VllmControl = ({ serverPowerStatus }) => {
 
     try {
       const modelKey = selectedModel || defaultModel;
-      await axios.post(`${API_URL}/api/command/start-vllm`, {
+      const response = await axios.post(`${API_URL}/api/command/start-vllm`, {
         model: modelKey,
         overrides: buildOverrides(),
       });
@@ -157,6 +157,23 @@ const VllmControl = ({ serverPowerStatus }) => {
         try {
           localStorage.setItem(`vllm:lastConfig:${modelKey}`, JSON.stringify(ov));
         } catch { /* localStorage unavailable */ }
+      }
+      // The Loaded Model card must show what was JUST launched (with overrides
+      // applied), not the catalog defaults — launchMeta from page load is stale
+      // when starting from this same page.
+      const resolved = response.data?.resolvedConfig;
+      if (resolved?.key) {
+        setLaunchMeta({
+          currentModel: resolved.key,
+          runningModelId: null,
+          lastLaunched: {
+            modelKey: resolved.key,
+            overrides: buildOverrides(),
+            resolvedConfig: resolved,
+            running: true,
+            startedAt: new Date().toISOString(),
+          },
+        });
       }
     } catch (err) {
       console.error('Error starting VLLM:', err.response?.data || err.message);
