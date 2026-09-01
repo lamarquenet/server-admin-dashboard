@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FaDollarSign, FaBolt, FaChartLine, FaSync, FaRedo, FaTrash } from 'react-icons/fa';
 import axios from 'axios';
 import useInterval from '../hooks/useInterval';
+import formatCurrency from '../utils/formatCurrency';
 
 // API URL
 const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.8.209:8002';
@@ -69,13 +70,6 @@ const CostTracking = ({ serverPowerStatus }) => {
     } finally {
       setResetting(prev => ({ ...prev, monthly: false }));
     }
-  };
-
-  // Format currency
-  const formatCurrency = (value) => {
-    if (value === null || value === undefined) return 'N/A';
-    if (value < 0.01) return `$${(value * 100).toFixed(2)}¢`;
-    return `$${Number(value).toFixed(4)}`;
   };
 
   // Format energy
