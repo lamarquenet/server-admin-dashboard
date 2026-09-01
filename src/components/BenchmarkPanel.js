@@ -175,6 +175,7 @@ const BenchmarkPanel = ({ serverPowerStatus }) => {
                 "{config.prompt}"
               </div>
               <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                <span>Prompt words: {config.promptWords}</span>
                 <span>Max tokens: {config.maxTokens}</span>
                 <span>Temperature: {config.temperature}</span>
               </div>
