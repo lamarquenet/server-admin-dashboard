@@ -12,6 +12,7 @@ const VllmControl = ({ serverPowerStatus }) => {
   const [buttonState, setButtonState] = useState('normal');
   const [timer, setTimer] = useState(0);
   const [models, setModels] = useState([]);
+  const [presets, setPresets] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [defaultModel, setDefaultModel] = useState('');
   const [loadingModels, setLoadingModels] = useState(true);
@@ -63,6 +64,7 @@ const VllmControl = ({ serverPowerStatus }) => {
         const response = await axios.get(`${API_URL}/api/command/vllm-models`, { timeout: 5000 });
         if (isMountedRef.current) {
           setModels(response.data.models || []);
+          setPresets(response.data.presets || []);
           setDefaultModel(response.data.defaultModel || '');
           // Prefer the model vLLM is actually serving (or last launched) over
           // the catalog default, so a page reload while running shows reality.
@@ -240,6 +242,24 @@ const VllmControl = ({ serverPowerStatus }) => {
 
   const setOvField = (field, value) => setOv(prev => ({ ...(prev || {}), [field]: value }));
 
+  // Apply an AI preset (from stats-server /api/command/vllm-models · presets):
+  // sets the model + fills the launch options, ready to press Start. User can tweak after.
+  const applyPreset = (p) => {
+    const o = p.overrides || {};
+    setSelectedModel(p.model);
+    setOv({
+      tp: String(o.tensorParallelSize ?? 2),
+      gpuMem: String(o.gpuMemoryUtilization ?? 0.95),
+      ctx: o.maxModelLen === 'auto' ? 'auto' : Number(o.maxModelLen),
+      kv: o.kvCacheDtype || 'fp8',
+      parser: o.reasoningParser === false ? 'off' : 'on',
+      prefix: o.prefixCaching ? 'on' : 'off',
+      mtp: o.speculativeEnabled === false ? 'off' : String(o.speculativeTokens ?? 3),
+      thinking: o.thinkingMode || 'instruct',
+    });
+    setShowAdvanced(true);
+  };
+
   // Build the overrides payload for POST /api/command/start-vllm
   const buildOverrides = () => {
     const model = getSelectedModelInfo();
@@ -282,13 +302,14 @@ const VllmControl = ({ serverPowerStatus }) => {
     if (!model || !ov || buttonState !== 'normal') return null;
 
     const ctxOptions = [...new Set([
-      8192, 16384, 32768, 49152, 65536, 98304, 131072, 196608, 262144,
+      8192, 16384, 32768, 49152, 65536, 98304, 131072, 170000, 190000, 196608, 262144,
       model.maxModelLen, model.maxModelLenNative,
     ])]
       .filter(v => v <= (model.maxModelLenNative || model.maxModelLen))
       .sort((a, b) => a - b);
     const gpuMemOptions = [];
     for (let v = 0.50; v <= 0.951; v += 0.05) gpuMemOptions.push(Number(v.toFixed(2)));
+    gpuMemOptions.push(0.97);
     const snippet = getRequestKwargsSnippet();
 
     const selectCls = "bg-dark-800 border border-gray-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-primary-500 w-full";
@@ -309,6 +330,23 @@ const VllmControl = ({ serverPowerStatus }) => {
 
         {showAdvanced && (
           <div className="mt-3">
+            {presets.length > 0 && (
+              <div className="mb-3">
+                <span className={labelCls}>Presets (benches 2026-10-11 — ajustables después)</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {presets.map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => applyPreset(p)}
+                      className="text-left bg-dark-800 hover:bg-dark-700 border border-primary-700 hover:border-primary-500 rounded px-3 py-2 transition-colors"
+                    >
+                      <div className="text-sm font-semibold text-primary-300">{p.name}</div>
+                      <div className="text-xs text-gray-400">{p.description}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {model.thinkingSupported ? (
                 <div>
